@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 CabreChess - by Federico Cabrera
 Un juego de ajedrez funcional inspirado en Lichess
+
+Copyright (C) 2026 Federico Cabrera
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version. See the LICENSE file for details.
 """
 
 import pygame

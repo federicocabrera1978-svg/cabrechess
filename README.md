@@ -31,9 +31,17 @@ automáticamente desde este código fuente público mediante GitHub Actions
 (ver `.github/workflows/release.yml`), por lo que cualquiera puede auditar exactamente
 qué se compiló.
 
+Este proyecto solicitó firma de código gratuita para proyectos open source a través de
+[SignPath.io / SignPath Foundation](https://signpath.io/). Ver [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md)
+para el detalle de procedencia, roles y estado.
+
 ## Build local
 
 ```
 pip install -r requirements.txt
 pyinstaller --onefile --windowed --name CabreChess cabrechess.py
 ```
+
+## Licencia
+
+GPL-3.0-or-later. Ver [LICENSE](LICENSE).

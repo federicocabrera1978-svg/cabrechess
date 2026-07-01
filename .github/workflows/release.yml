@@ -24,6 +24,27 @@ jobs:
       - name: Build executable
         run: pyinstaller --onefile --windowed --name CabreChess cabrechess.py
 
+      # Uncomment once the project is approved by SignPath Foundation
+      # (https://signpath.org/) and the SIGNPATH_API_TOKEN secret,
+      # organization-id, project-slug and signing-policy-slug are set.
+      # - name: Upload unsigned artifact for signing
+      #   id: upload-unsigned-artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: CabreChess-unsigned
+      #     path: dist/CabreChess.exe
+      #
+      # - name: Submit signing request
+      #   uses: signpath/github-action-submit-signing-request@v2
+      #   with:
+      #     api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+      #     organization-id: '<signpath-organization-id>'
+      #     project-slug: 'cabrechess'
+      #     signing-policy-slug: 'release-signing'
+      #     github-artifact-id: '${{ steps.upload-unsigned-artifact.outputs.artifact-id }}'
+      #     wait-for-completion: true
+      #     output-artifact-directory: 'dist-signed'
+
       - name: Compute checksum
         shell: pwsh
         run: |
