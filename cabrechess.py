@@ -1,0 +1,1626 @@
+#!/usr/bin/env python3
+"""
+CabreChess - by Federico Cabrera
+Un juego de ajedrez funcional inspirado en Lichess
+"""
+
+import pygame
+import chess
+import chess.engine
+import sys
+import os
+import time
+import math
+import random
+import threading
+from pathlib import Path
+
+# ─── CONSTANTES ────────────────────────────────────────────────────────────────
+WINDOW_W, WINDOW_H = 1100, 780
+BOARD_SIZE = 640
+SQUARE_SIZE = BOARD_SIZE // 8
+BOARD_X = 60
+BOARD_Y = 70
+
+# Colores Lichess
+BG_COLOR        = (22,  21,  18)
+PANEL_COLOR     = (30,  29,  26)
+LIGHT_SQ        = (240, 217, 181)
+DARK_SQ         = (181, 136,  99)
+HIGHLIGHT_SQ    = (205, 210,  106)
+SELECTED_SQ     = (246, 246, 105)
+LEGAL_DOT       = (0,   0,   0,  80)
+CHECK_SQ        = (220,  50,  50, 180)
+LAST_MOVE       = (170, 162,  58, 180)
+HOVER_COLOR     = (255, 255, 255,  25)
+TEXT_COLOR      = (186, 186, 186)
+TEXT_BRIGHT     = (255, 255, 255)
+TEXT_DIM        = (100, 100, 100)
+ACCENT          = (138, 196,  33)    # verde Lichess
+ACCENT2         = ( 81, 150, 200)    # azul
+DANGER          = (220,  55,  55)
+BORDER_COLOR    = ( 55,  54,  50)
+PREMOVE_SQ      = (200,  80,  80)    # rojo-naranja para premove (igual Lichess)
+PREMOVE_ALPHA   = 170
+MOVE_BG         = ( 38,  37,  34)
+MOVE_ACTIVE     = ( 55,  54,  50)
+PANEL_W         = WINDOW_W - BOARD_X - BOARD_SIZE - 20
+PANEL_X         = BOARD_X + BOARD_SIZE + 16
+
+# Piezas Unicode
+PIECE_UNICODE = {
+    (chess.KING,   chess.WHITE): '♔',
+    (chess.QUEEN,  chess.WHITE): '♕',
+    (chess.ROOK,   chess.WHITE): '♖',
+    (chess.BISHOP, chess.WHITE): '♗',
+    (chess.KNIGHT, chess.WHITE): '♘',
+    (chess.PAWN,   chess.WHITE): '♙',
+    (chess.KING,   chess.BLACK): '♚',
+    (chess.QUEEN,  chess.BLACK): '♛',
+    (chess.ROOK,   chess.BLACK): '♜',
+    (chess.BISHOP, chess.BLACK): '♝',
+    (chess.KNIGHT, chess.BLACK): '♞',
+    (chess.PAWN,   chess.BLACK): '♟',
+}
+
+PIECE_NAMES = {
+    chess.PAWN: 'Peón', chess.KNIGHT: 'Caballo', chess.BISHOP: 'Alfil',
+    chess.ROOK: 'Torre', chess.QUEEN: 'Reina', chess.KING: 'Rey',
+}
+
+# ─── MOTOR DE AJEDREZ (STOCKFISH O MINIMAX) ────────────────────────────────────
+class SimpleEngine:
+    """Motor minimax simple cuando Stockfish no está disponible."""
+    PIECE_VALUES = {
+        chess.PAWN: 100, chess.KNIGHT: 320, chess.BISHOP: 330,
+        chess.ROOK: 500, chess.QUEEN: 900, chess.KING: 20000,
+    }
+    PST = {  # Piece-square tables simplificadas
+        chess.PAWN: [
+             0,  0,  0,  0,  0,  0,  0,  0,
+            50, 50, 50, 50, 50, 50, 50, 50,
+            10, 10, 20, 30, 30, 20, 10, 10,
+             5,  5, 10, 25, 25, 10,  5,  5,
+             0,  0,  0, 20, 20,  0,  0,  0,
+             5, -5,-10,  0,  0,-10, -5,  5,
+             5, 10, 10,-20,-20, 10, 10,  5,
+             0,  0,  0,  0,  0,  0,  0,  0,
+        ],
+        chess.KNIGHT: [
+            -50,-40,-30,-30,-30,-30,-40,-50,
+            -40,-20,  0,  0,  0,  0,-20,-40,
+            -30,  0, 10, 15, 15, 10,  0,-30,
+            -30,  5, 15, 20, 20, 15,  5,-30,
+            -30,  0, 15, 20, 20, 15,  0,-30,
+            -30,  5, 10, 15, 15, 10,  5,-30,
+            -40,-20,  0,  5,  5,  0,-20,-40,
+            -50,-40,-30,-30,-30,-30,-40,-50,
+        ],
+    }
+
+    def evaluate(self, board):
+        if board.is_checkmate():
+            return -99999 if board.turn == chess.WHITE else 99999
+        if board.is_stalemate() or board.is_insufficient_material():
+            return 0
+        score = 0
+        for sq in chess.SQUARES:
+            piece = board.piece_at(sq)
+            if piece:
+                val = self.PIECE_VALUES.get(piece.piece_type, 0)
+                pst = self.PST.get(piece.piece_type, [0]*64)
+                idx = chess.square_mirror(sq) if piece.color == chess.WHITE else sq
+                val += pst[idx] if idx < len(pst) else 0
+                score += val if piece.color == chess.WHITE else -val
+        return score
+
+    def minimax(self, board, depth, alpha, beta, maximizing):
+        if depth == 0 or board.is_game_over():
+            return self.evaluate(board), None
+        best_move = None
+        moves = list(board.legal_moves)
+        random.shuffle(moves)
+        if maximizing:
+            best = -math.inf
+            for move in moves:
+                board.push(move)
+                val, _ = self.minimax(board, depth-1, alpha, beta, False)
+                board.pop()
+                if val > best:
+                    best, best_move = val, move
+                alpha = max(alpha, best)
+                if beta <= alpha:
+                    break
+            return best, best_move
+        else:
+            best = math.inf
+            for move in moves:
+                board.push(move)
+                val, _ = self.minimax(board, depth-1, alpha, beta, True)
+                board.pop()
+                if val < best:
+                    best, best_move = val, move
+                beta = min(beta, best)
+                if beta <= alpha:
+                    break
+            return best, best_move
+
+    def get_best_move(self, board, depth=3):
+        maximizing = board.turn == chess.WHITE
+        _, move = self.minimax(board, depth, -math.inf, math.inf, maximizing)
+        return move
+
+
+# ─── CLASE PRINCIPAL ────────────────────────────────────────────────────────────
+class CabreChess:
+    def __init__(self):
+        pygame.init()
+        pygame.display.set_caption("CabreChess")
+        self.screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
+        self.clock = pygame.time.Clock()
+
+        # Fuentes
+        self.load_fonts()
+
+        # Estado del juego
+        self.board = chess.Board()
+        self.selected_sq = None
+        self.legal_moves_from = []
+        self.last_move = None
+        self.flipped = False
+        self.move_history = []        # lista de strings UCI
+        self.move_history_san = []    # lista SAN
+        self.history_scroll = 0
+        self.promotion_pending = None
+        self.promotion_sq = None
+        self.game_over = False
+        self.game_over_msg = ""
+        self.hover_sq = None
+        self.dragging = False
+        self.drag_piece = None
+        self.drag_pos = (0, 0)
+        self.drag_from = None
+
+        # Modo de juego
+        self.mode = "menu"   # menu / pvp / vsai / analysis
+        self.ai_color = chess.BLACK
+        self.ai_thinking = False
+        self.ai_think_start = 0
+        self.ai_delay = 0.6
+        self.engine = SimpleEngine()
+        self.ai_depth = 3
+        self.ai_thread = None
+        self.ai_move_ready = False
+        self.ai_result_move = None
+
+        # Animación
+        self.anim_move = None
+        self.anim_start = 0
+        self.anim_duration = 0.15
+        self.anim_piece = None
+        self.anim_from_pos = None
+        self.anim_to_pos = None
+
+        # Capturadas
+        self.captured_white = []
+        self.captured_black = []
+
+        # Tiempos
+        self.time_options = [60, 180, 300, 600]   # 1/3/5/10 min en segundos
+        self.time_selected = 180                   # 3 min por defecto
+        self.time_increment = 3                    # +3s por movimiento
+        self.time_white = self.time_selected
+        self.time_black = self.time_selected
+        self.time_last = time.time()
+        self.use_timer = True                      # siempre activo
+
+        # Premove
+        self.premove_from = None   # casilla origen del premove
+        self.premove_to   = None   # casilla destino del premove
+        self.premove_piece = None  # pieza del premove (para dibujarla)
+
+        # Análisis — barra de evaluación
+        self.eval_score = 0.0        # centipawns, positivo = blancas mejor
+        self.eval_history = []       # evaluación por movimiento
+        self.eval_update_needed = False
+
+        # PGN metadata
+        self.pgn_white = "Blancas"
+        self.pgn_black = "Negras"
+        self.pgn_saved_msg = ""
+        self.pgn_saved_time = 0
+
+        # Efectos
+        self.particles = []
+        self.check_flash = 0
+
+        # Superficie tablero (cache)
+        self.board_surf = pygame.Surface((BOARD_SIZE, BOARD_SIZE))
+        self.render_static_board()
+
+        # Overlay surfaces
+        self.overlay = pygame.Surface((WINDOW_W, WINDOW_H), pygame.SRCALPHA)
+
+        print("CabreChess iniciado!")
+
+    def load_fonts(self):
+        # Usamos fuentes del sistema, priorizando las más bonitas
+        candidates = ["DejaVu Sans", "Liberation Sans", "Ubuntu", "FreeSans", "Arial"]
+        font_name = None
+        for c in candidates:
+            try:
+                pygame.font.SysFont(c, 12)
+                font_name = c
+                break
+            except:
+                pass
+
+        self.font_tiny   = pygame.font.SysFont(font_name, 12)
+        self.font_small  = pygame.font.SysFont(font_name, 14)
+        self.font_med    = pygame.font.SysFont(font_name, 18)
+        self.font_large  = pygame.font.SysFont(font_name, 24, bold=True)
+        self.font_xl     = pygame.font.SysFont(font_name, 36, bold=True)
+        self.font_title  = pygame.font.SysFont(font_name, 52, bold=True)
+        # Fuente para piezas Unicode: SysFont no garantiza que la fuente tenga
+        # el glifo — si no la encuentra, Windows/SDL la reemplaza en silencio
+        # por otra (p.ej. "DejaVu Sans" -> Arial Narrow) y el símbolo sale
+        # como un rectángulo ("tofu"). Verificamos con freetype que el glifo
+        # exista de verdad antes de aceptar la fuente.
+        piece_font_path = self.find_piece_font_path()
+        if piece_font_path:
+            self.font_piece     = pygame.font.Font(piece_font_path, SQUARE_SIZE - 10)
+            self.font_piece_sm  = pygame.font.Font(piece_font_path, 20)
+            self.font_piece_xs  = pygame.font.Font(piece_font_path, 14)
+        else:
+            self.font_piece     = pygame.font.SysFont(font_name, SQUARE_SIZE - 10)
+            self.font_piece_sm  = pygame.font.SysFont(font_name, 20)
+            self.font_piece_xs  = pygame.font.SysFont(font_name, 14)
+
+    def find_piece_font_path(self):
+        """Busca una fuente del sistema que realmente contenga los glifos de
+        piezas de ajedrez (♔♛♞...), comprobando el glifo con freetype en vez
+        de confiar en el ancho renderizado (un glifo faltante también ocupa
+        ancho: se dibuja como un rectángulo de reemplazo)."""
+        import pygame.freetype
+        pygame.freetype.init()
+        candidates = ["Segoe UI Symbol", "DejaVu Sans", "Noto Sans Symbols",
+                      "Noto Sans Symbols2", "Symbola", "Apple Symbols",
+                      "FreeSans", "Arial Unicode MS"]
+        for name in candidates:
+            path = pygame.font.match_font(name)
+            if not path:
+                continue
+            try:
+                metrics = pygame.freetype.Font(path, 32).get_metrics('♔')
+                if metrics and metrics[0] is not None:
+                    return path
+            except Exception:
+                continue
+        return None
+
+    # ─── RENDER ESTÁTICO ────────────────────────────────────────────────────────
+    def render_static_board(self):
+        for rank in range(8):
+            for file in range(8):
+                color = LIGHT_SQ if (rank + file) % 2 == 0 else DARK_SQ
+                rect = pygame.Rect(file * SQUARE_SIZE, rank * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
+                pygame.draw.rect(self.board_surf, color, rect)
+
+    def sq_to_pixel(self, sq):
+        """Convierte un square de chess a posición en pantalla (esquina superior izq)."""
+        file = chess.square_file(sq)
+        rank = chess.square_rank(sq)
+        if self.flipped:
+            x = (7 - file) * SQUARE_SIZE + BOARD_X
+            y = rank * SQUARE_SIZE + BOARD_Y
+        else:
+            x = file * SQUARE_SIZE + BOARD_X
+            y = (7 - rank) * SQUARE_SIZE + BOARD_Y
+        return (x, y)
+
+    def pixel_to_sq(self, px, py):
+        """Convierte coordenadas de pantalla a square."""
+        bx = px - BOARD_X
+        by = py - BOARD_Y
+        if bx < 0 or by < 0 or bx >= BOARD_SIZE or by >= BOARD_SIZE:
+            return None
+        file = bx // SQUARE_SIZE
+        rank = 7 - (by // SQUARE_SIZE)
+        if self.flipped:
+            file = 7 - file
+            rank = 7 - rank
+        if 0 <= file <= 7 and 0 <= rank <= 7:
+            return chess.square(file, rank)
+        return None
+
+    def center_of_sq(self, sq):
+        x, y = self.sq_to_pixel(sq)
+        return (x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2)
+
+    # ─── DIBUJO PRINCIPAL ───────────────────────────────────────────────────────
+    def draw(self):
+        self.screen.fill(BG_COLOR)
+
+        if self.mode == "menu":
+            self.draw_menu()
+        else:
+            self.draw_game()
+
+        pygame.display.flip()
+
+    def draw_menu(self):
+        # Fondo con patrón de tablero sutil
+        for rank in range(8):
+            for file in range(8):
+                color = (28, 27, 24) if (rank+file)%2==0 else (32, 31, 28)
+                pygame.draw.rect(self.screen, color,
+                    (file*137, rank*97, 137, 97))
+
+        # Título
+        title_surf = self.font_title.render("CabreChess", True, TEXT_BRIGHT)
+        sub_surf = self.font_med.render("by Federico Cabrera", True, ACCENT)
+        tx = WINDOW_W//2 - title_surf.get_width()//2
+        self.screen.blit(title_surf, (tx, 90))
+        self.screen.blit(sub_surf, (WINDOW_W//2 - sub_surf.get_width()//2, 155))
+
+        # Pieza decorativa
+        king_surf = self.font_piece.render('♚', True, (60, 59, 56))
+        self.screen.blit(king_surf, (WINDOW_W//2 - king_surf.get_width()//2, 185))
+
+        # Botones
+        buttons = [
+            ("♟  Jugar contra IA",    "vsai",     ACCENT),
+            ("♟  2 Jugadores (PvP)",  "pvp",      ACCENT2),
+            ("⚙  Análisis",           "analysis", (150, 150, 150)),
+        ]
+        for i, (label, action, color) in enumerate(buttons):
+            bx, by = WINDOW_W//2 - 160, 340 + i*80
+            bw, bh = 320, 52
+            rect = pygame.Rect(bx, by, bw, bh)
+            mx, my = pygame.mouse.get_pos()
+            hovered = rect.collidepoint(mx, my)
+            bg = (45, 44, 41) if hovered else (35, 34, 31)
+            pygame.draw.rect(self.screen, bg, rect, border_radius=8)
+            pygame.draw.rect(self.screen, color if hovered else BORDER_COLOR, rect, 2, border_radius=8)
+            lbl = self.font_large.render(label, True, TEXT_BRIGHT if hovered else TEXT_COLOR)
+            self.screen.blit(lbl, (bx + bw//2 - lbl.get_width()//2, by + bh//2 - lbl.get_height()//2))
+
+        # Dificultad IA
+        diff_y = 570
+        diff_label = self.font_small.render("Dificultad IA:", True, TEXT_DIM)
+        self.screen.blit(diff_label, (WINDOW_W//2 - 140, diff_y))
+        levels = [("Fácil",1), ("Normal",3), ("Difícil",5)]
+        for i, (name, d) in enumerate(levels):
+            bx2 = WINDOW_W//2 - 80 + i*90
+            r = pygame.Rect(bx2, diff_y - 3, 80, 26)
+            mx, my = pygame.mouse.get_pos()
+            sel = self.ai_depth == d
+            pygame.draw.rect(self.screen, ACCENT if sel else (40,40,37), r, border_radius=5)
+            lbl2 = self.font_small.render(name, True, BG_COLOR if sel else TEXT_COLOR)
+            self.screen.blit(lbl2, (bx2+40-lbl2.get_width()//2, diff_y+1))
+
+        # Selector de tiempo
+        time_y = 618
+        time_label = self.font_small.render("Tiempo:", True, TEXT_DIM)
+        self.screen.blit(time_label, (WINDOW_W//2 - 140, time_y))
+        time_opts = [(60,"1 min"),(180,"3 min"),(300,"5 min"),(600,"10 min")]
+        for i, (secs, label) in enumerate(time_opts):
+            bx3 = WINDOW_W//2 - 80 + i*72
+            r3 = pygame.Rect(bx3, time_y - 3, 68, 26)
+            sel3 = self.time_selected == secs
+            pygame.draw.rect(self.screen, ACCENT2 if sel3 else (40,40,37), r3, border_radius=5)
+            lbl3 = self.font_small.render(label, True, BG_COLOR if sel3 else TEXT_COLOR)
+            self.screen.blit(lbl3, (bx3+34-lbl3.get_width()//2, time_y+1))
+
+        # Incremento info
+        inc_surf = self.font_tiny.render(f"+{self.time_increment}s por movimiento", True, TEXT_DIM)
+        self.screen.blit(inc_surf, (WINDOW_W//2 - inc_surf.get_width()//2, time_y + 30))
+
+        # Versión
+        v = self.font_tiny.render("v1.0.0 — Motor: Minimax Alpha-Beta", True, TEXT_DIM)
+        self.screen.blit(v, (WINDOW_W//2 - v.get_width()//2, WINDOW_H - 30))
+
+    def draw_game(self):
+        # Barra de evaluación (solo en modo análisis)
+        if self.mode == "analysis":
+            self.draw_eval_bar()
+
+        # Panel izquierdo - info jugador negro
+        self.draw_player_panel(chess.BLACK, 30, BOARD_Y - 30)
+
+        # Tablero base
+        board_rect = pygame.Rect(BOARD_X, BOARD_Y, BOARD_SIZE, BOARD_SIZE)
+        pygame.draw.rect(self.screen, BORDER_COLOR, board_rect.inflate(4, 4), border_radius=3)
+        self.screen.blit(self.board_surf, (BOARD_X, BOARD_Y))
+
+        # Highlights
+        self.draw_highlights()
+
+        # Coordenadas
+        self.draw_coordinates()
+
+        # Piezas (excepto la que se arrastra)
+        self.draw_pieces()
+
+        # Animación de movimiento
+        if self.anim_move:
+            self.draw_animation()
+
+        # Pieza arrastrada
+        if self.dragging and self.drag_piece:
+            self.draw_dragged_piece()
+
+        # Menú de promoción
+        if self.promotion_pending:
+            self.draw_promotion_menu()
+
+        # Panel derecho
+        self.draw_side_panel()
+
+        # Panel jugador blanco
+        self.draw_player_panel(chess.WHITE, 30, BOARD_Y + BOARD_SIZE + 10)
+
+        # Overlay fin de juego
+        if self.game_over:
+            self.draw_game_over()
+
+        # Thinking indicator
+        if self.ai_thinking:
+            self.draw_thinking()
+
+        # Partículas
+        self.draw_particles()
+
+    def draw_eval_bar(self):
+        """Barra vertical de evaluación estilo Lichess, a la izquierda del tablero."""
+        bar_x = BOARD_X - 22
+        bar_y = BOARD_Y
+        bar_w = 14
+        bar_h = BOARD_SIZE
+
+        # Fondo
+        pygame.draw.rect(self.screen, (40, 39, 36),
+            pygame.Rect(bar_x, bar_y, bar_w, bar_h), border_radius=4)
+
+        # Convertir score a proporción (clampeado a ±6 peones = extremo)
+        score = self.eval_score
+        MAX_SCORE = 600  # centipawns
+        clamped = max(-MAX_SCORE, min(MAX_SCORE, score))
+        # Proporción blancas (0=todo negro, 1=todo blancas)
+        white_ratio = 0.5 + (clamped / (MAX_SCORE * 2))
+        white_h = int(bar_h * white_ratio)
+        black_h = bar_h - white_h
+
+        # Bloque negro (arriba)
+        if black_h > 0:
+            pygame.draw.rect(self.screen, (30, 29, 26),
+                pygame.Rect(bar_x, bar_y, bar_w, black_h), border_radius=4)
+        # Bloque blanco (abajo)
+        if white_h > 0:
+            pygame.draw.rect(self.screen, (220, 215, 200),
+                pygame.Rect(bar_x, bar_y + black_h, bar_w, white_h), border_radius=4)
+
+        # Línea central
+        pygame.draw.line(self.screen, (80, 79, 76),
+            (bar_x, bar_y + bar_h//2), (bar_x + bar_w, bar_y + bar_h//2), 1)
+
+        # Texto de evaluación
+        if abs(score) >= 9900:
+            txt = "M" + ("+" if score > 0 else "-")
+        elif abs(score) >= 100:
+            txt = f"{score/100:+.1f}"
+        else:
+            txt = f"{score/100:+.2f}".rstrip('0').rstrip('.')
+        color = TEXT_BRIGHT if score >= 0 else (180, 180, 180)
+        ev_surf = self.font_tiny.render(txt, True, color)
+        self.screen.blit(ev_surf, (bar_x + bar_w//2 - ev_surf.get_width()//2,
+                                    bar_y + bar_h + 4))
+
+    def draw_player_panel(self, color, x, y):
+        name = "Jugador Negro" if color == chess.BLACK else "Jugador Blanco"
+        if self.mode == "vsai":
+            if color == self.ai_color:
+                name = "CabreChess AI"
+        sym = '♚' if color == chess.BLACK else '♔'
+        c = (200, 200, 200) if color == chess.BLACK else (255, 255, 255)
+        sym_surf = self.font_piece_sm.render(sym, True, c)
+        name_surf = self.font_small.render(name, True, TEXT_COLOR)
+        turn_indicator = color == self.board.turn and not self.game_over
+        if turn_indicator:
+            dot_x = x + 8
+            dot_y = y + 12
+            pygame.draw.circle(self.screen, ACCENT, (dot_x, dot_y), 5)
+        self.screen.blit(sym_surf, (x + 18, y))
+        self.screen.blit(name_surf, (x + 42, y + 3))
+
+        # Tiempo - reloj estilo Lichess
+        if self.use_timer:
+            t = self.time_white if color == chess.WHITE else self.time_black
+            mins = int(t) // 60
+            secs = int(t) % 60
+            tenths = int((t - int(t)) * 10)
+            # Mostrar décimas si queda menos de 1 minuto
+            if t < 60:
+                time_str = f"{mins}:{secs:02d}.{tenths}"
+            else:
+                time_str = f"{mins}:{secs:02d}"
+            is_active = color == self.board.turn and not self.game_over
+            is_low = t < 30
+            # Fondo del reloj
+            ts = self.font_large.render(time_str, True, TEXT_BRIGHT)
+            clock_w = max(ts.get_width() + 20, 90)
+            clock_x = BOARD_X + BOARD_SIZE - clock_w - 2
+            clock_y = y - 4
+            clock_rect = pygame.Rect(clock_x, clock_y, clock_w, 30)
+            if is_low and is_active:
+                # Parpadeo rojo cuando queda poco tiempo
+                alpha = int(abs(math.sin(time.time() * 4)) * 120 + 80)
+                bg_surf = pygame.Surface((clock_w, 30), pygame.SRCALPHA)
+                bg_surf.fill((*DANGER, alpha))
+                self.screen.blit(bg_surf, (clock_x, clock_y))
+                pygame.draw.rect(self.screen, DANGER, clock_rect, 2, border_radius=5)
+            elif is_active:
+                pygame.draw.rect(self.screen, (55, 54, 50), clock_rect, border_radius=5)
+                pygame.draw.rect(self.screen, ACCENT, clock_rect, 2, border_radius=5)
+            else:
+                pygame.draw.rect(self.screen, (38, 37, 34), clock_rect, border_radius=5)
+            tc = DANGER if is_low else (TEXT_BRIGHT if is_active else TEXT_DIM)
+            ts = self.font_large.render(time_str, True, tc)
+            self.screen.blit(ts, (clock_x + clock_w//2 - ts.get_width()//2, clock_y + 4))
+
+        # Piezas capturadas
+        self.draw_captured(color, x + 200, y + 2)
+
+    def draw_captured(self, color, x, y):
+        caps = self.captured_black if color == chess.BLACK else self.captured_white
+        for i, p in enumerate(caps[:16]):
+            sym = PIECE_UNICODE.get((p.piece_type, p.color), '?')
+            s = self.font_piece_xs.render(sym, True, TEXT_DIM)
+            self.screen.blit(s, (x + i*14, y))
+
+    def draw_highlights(self):
+        surf = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+
+        # Último movimiento
+        if self.last_move:
+            for sq in [self.last_move.from_square, self.last_move.to_square]:
+                x, y = self.sq_to_pixel(sq)
+                lm_surf = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+                lm_surf.fill((*LAST_MOVE[:3], 120))
+                self.screen.blit(lm_surf, (x, y))
+
+        # Casilla en jaque
+        if self.board.is_check():
+            king_sq = self.board.king(self.board.turn)
+            if king_sq is not None:
+                x, y = self.sq_to_pixel(king_sq)
+                ck_surf = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+                # Gradiente radial simulado
+                for r in range(SQUARE_SIZE//2, 0, -4):
+                    alpha = int(160 * (1 - r/(SQUARE_SIZE//2)))
+                    pygame.draw.circle(ck_surf, (220, 50, 50, alpha),
+                        (SQUARE_SIZE//2, SQUARE_SIZE//2), r)
+                self.screen.blit(ck_surf, (x, y))
+
+        # Seleccionado
+        if self.selected_sq is not None:
+            x, y = self.sq_to_pixel(self.selected_sq)
+            sel_surf = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+            sel_surf.fill((*SELECTED_SQ, 180))
+            self.screen.blit(sel_surf, (x, y))
+
+        # Movimientos legales
+        for move in self.legal_moves_from:
+            sq = move.to_square
+            x, y = self.sq_to_pixel(sq)
+            cx, cy = x + SQUARE_SIZE//2, y + SQUARE_SIZE//2
+            dot_surf = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+            if self.board.piece_at(sq):
+                # Captura: ring
+                pygame.draw.circle(dot_surf, (0, 0, 0, 100),
+                    (SQUARE_SIZE//2, SQUARE_SIZE//2), SQUARE_SIZE//2 - 2, 6)
+            else:
+                # Punto
+                pygame.draw.circle(dot_surf, (0, 0, 0, 90),
+                    (SQUARE_SIZE//2, SQUARE_SIZE//2), SQUARE_SIZE//7)
+            self.screen.blit(dot_surf, (x, y))
+
+        # Premove highlight (naranja-rojo, sobre todo lo demás)
+        if self.premove_from is not None:
+            for sq in [self.premove_from, self.premove_to]:
+                if sq is not None:
+                    x, y = self.sq_to_pixel(sq)
+                    pm_surf = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+                    pm_surf.fill((*PREMOVE_SQ, PREMOVE_ALPHA))
+                    self.screen.blit(pm_surf, (x, y))
+
+        # Hover
+        if self.hover_sq is not None and not self.dragging:
+            x, y = self.sq_to_pixel(self.hover_sq)
+            hov_surf = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+            hov_surf.fill((255, 255, 255, 18))
+            self.screen.blit(hov_surf, (x, y))
+
+    def draw_coordinates(self):
+        files = 'abcdefgh'
+        ranks = '12345678'
+        for i in range(8):
+            # Archivos (abajo)
+            fi = i if not self.flipped else 7-i
+            f_surf = self.font_tiny.render(files[fi], True,
+                DARK_SQ if i%2==0 else LIGHT_SQ)
+            self.screen.blit(f_surf, (BOARD_X + i*SQUARE_SIZE + SQUARE_SIZE - 9,
+                                      BOARD_Y + BOARD_SIZE - 12))
+            # Rangos (izquierda)
+            ri = 7-i if not self.flipped else i
+            r_surf = self.font_tiny.render(ranks[ri], True,
+                DARK_SQ if (7-i)%2==1 else LIGHT_SQ)
+            self.screen.blit(r_surf, (BOARD_X + 2, BOARD_Y + i*SQUARE_SIZE + 2))
+
+    def draw_pieces(self):
+        for sq in chess.SQUARES:
+            if sq == self.drag_from and self.dragging:
+                continue
+            # Ocultar pieza origen del premove (se muestra semi-transparente)
+            if sq == self.premove_from and self.premove_to is not None:
+                continue
+            if self.anim_move and sq == self.anim_move.to_square:
+                continue
+            piece = self.board.piece_at(sq)
+            if piece:
+                self.draw_piece_at_sq(piece, sq)
+
+        # Dibujar pieza premove en destino (fantasma)
+        if self.premove_from is not None and self.premove_to is not None and self.premove_piece:
+            self.draw_piece_premove_ghost()
+
+    def draw_piece_premove_ghost(self):
+        """Dibuja la pieza del premove en el destino con transparencia."""
+        sq = self.premove_to
+        piece = self.premove_piece
+        x, y = self.sq_to_pixel(sq)
+        sym = PIECE_UNICODE.get((piece.piece_type, piece.color), '?')
+        color = (255, 255, 255, 140) if piece.color == chess.WHITE else (30, 30, 30, 140)
+        ghost = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+        p_surf = self.font_piece.render(sym, True, color[:3])
+        p_surf.set_alpha(150)
+        ghost.blit(p_surf, (0, 0))
+        self.screen.blit(ghost, (x, y))
+
+    def draw_piece_at_sq(self, piece, sq):
+        x, y = self.sq_to_pixel(sq)
+        sym = PIECE_UNICODE.get((piece.piece_type, piece.color), '?')
+        # Sombra
+        shadow = self.font_piece.render(sym, True, (0, 0, 0))
+        self.screen.blit(shadow, (x + 2, y + 2))
+        color = TEXT_BRIGHT if piece.color == chess.WHITE else (30, 30, 30)
+        surf = self.font_piece.render(sym, True, color)
+        self.screen.blit(surf, (x, y))
+
+    def draw_dragged_piece(self):
+        sym = PIECE_UNICODE.get((self.drag_piece.piece_type, self.drag_piece.color), '?')
+        shadow = self.font_piece.render(sym, True, (0, 0, 0, 100))
+        self.screen.blit(shadow, (self.drag_pos[0] - SQUARE_SIZE//2 + 4,
+                                   self.drag_pos[1] - SQUARE_SIZE//2 + 4))
+        color = TEXT_BRIGHT if self.drag_piece.color == chess.WHITE else (30, 30, 30)
+        surf = self.font_piece.render(sym, True, color)
+        self.screen.blit(surf, (self.drag_pos[0] - SQUARE_SIZE//2,
+                                 self.drag_pos[1] - SQUARE_SIZE//2))
+
+    def draw_animation(self):
+        t = (time.time() - self.anim_start) / self.anim_duration
+        if t >= 1:
+            self.anim_move = None
+            return
+        # Interpolación suave
+        t = t * t * (3 - 2 * t)  # smoothstep
+        if self.anim_from_pos and self.anim_to_pos:
+            x = self.anim_from_pos[0] + (self.anim_to_pos[0] - self.anim_from_pos[0]) * t
+            y = self.anim_from_pos[1] + (self.anim_to_pos[1] - self.anim_from_pos[1]) * t
+            if self.anim_piece:
+                sym = PIECE_UNICODE.get((self.anim_piece.piece_type, self.anim_piece.color), '?')
+                color = TEXT_BRIGHT if self.anim_piece.color == chess.WHITE else (30, 30, 30)
+                surf = self.font_piece.render(sym, True, color)
+                self.screen.blit(surf, (int(x), int(y)))
+
+    def draw_promotion_menu(self):
+        overlay = pygame.Surface((WINDOW_W, WINDOW_H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150))
+        self.screen.blit(overlay, (0, 0))
+
+        pieces = [chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT]
+        pw = 200
+        ph = 60
+        px = WINDOW_W//2 - pw//2
+        py = WINDOW_H//2 - (len(pieces)*ph + 40)//2
+
+        # Panel
+        panel_rect = pygame.Rect(px - 20, py - 20, pw + 40, len(pieces)*ph + 80)
+        pygame.draw.rect(self.screen, PANEL_COLOR, panel_rect, border_radius=12)
+        pygame.draw.rect(self.screen, ACCENT, panel_rect, 2, border_radius=12)
+
+        title = self.font_large.render("Promoción", True, TEXT_BRIGHT)
+        self.screen.blit(title, (WINDOW_W//2 - title.get_width()//2, py - 5))
+
+        color = self.board.turn
+        mx, my = pygame.mouse.get_pos()
+        for i, pt in enumerate(pieces):
+            bx, by = px, py + 30 + i*ph
+            brect = pygame.Rect(bx, by, pw, ph - 8)
+            hovered = brect.collidepoint(mx, my)
+            bg = ACCENT if hovered else (50, 49, 46)
+            pygame.draw.rect(self.screen, bg, brect, border_radius=8)
+            sym = PIECE_UNICODE.get((pt, color), '?')
+            tc = BG_COLOR if hovered else TEXT_BRIGHT
+            p_surf = self.font_piece_sm.render(sym, True, tc)
+            n_surf = self.font_med.render(PIECE_NAMES[pt], True, tc)
+            self.screen.blit(p_surf, (bx + 15, by + ph//2 - p_surf.get_height()//2 - 4))
+            self.screen.blit(n_surf, (bx + 55, by + ph//2 - n_surf.get_height()//2 - 4))
+
+    def draw_side_panel(self):
+        # Panel de movimientos
+        panel_rect = pygame.Rect(PANEL_X, BOARD_Y, PANEL_W - 10, BOARD_SIZE)
+        pygame.draw.rect(self.screen, PANEL_COLOR, panel_rect, border_radius=8)
+        pygame.draw.rect(self.screen, BORDER_COLOR, panel_rect, 1, border_radius=8)
+
+        # Título panel
+        title = self.font_small.render("Movimientos", True, TEXT_DIM)
+        self.screen.blit(title, (PANEL_X + 10, BOARD_Y + 10))
+
+        # Movimientos en pares
+        clip_rect = pygame.Rect(PANEL_X + 5, BOARD_Y + 30, PANEL_W - 20, BOARD_SIZE - 80)
+        self.screen.set_clip(clip_rect)
+
+        moves_per_row = 2
+        row_h = 24
+        visible_rows = (clip_rect.height) // row_h
+        total_rows = (len(self.move_history_san) + 1) // 2 + 1
+
+        # Auto-scroll al final
+        if total_rows > visible_rows:
+            self.history_scroll = max(0, total_rows - visible_rows)
+
+        for i in range(0, len(self.move_history_san), 2):
+            row = i // 2
+            y = BOARD_Y + 32 + (row - self.history_scroll) * row_h
+            if y < BOARD_Y + 28 or y > BOARD_Y + BOARD_SIZE - 30:
+                continue
+
+            # Número
+            num_s = self.font_small.render(f"{row+1}.", True, TEXT_DIM)
+            self.screen.blit(num_s, (PANEL_X + 8, y))
+
+            # Jugada blanca
+            if i < len(self.move_history_san):
+                is_last = i == len(self.move_history_san) - 1
+                bg = MOVE_ACTIVE if is_last else None
+                if bg:
+                    pygame.draw.rect(self.screen, bg,
+                        (PANEL_X + 35, y-2, 60, row_h-2), border_radius=3)
+                ms = self.font_small.render(self.move_history_san[i], True,
+                    TEXT_BRIGHT if is_last else TEXT_COLOR)
+                self.screen.blit(ms, (PANEL_X + 38, y))
+
+            # Jugada negra
+            if i+1 < len(self.move_history_san):
+                is_last = i+1 == len(self.move_history_san) - 1
+                bg = MOVE_ACTIVE if is_last else None
+                if bg:
+                    pygame.draw.rect(self.screen, bg,
+                        (PANEL_X + 95, y-2, 60, row_h-2), border_radius=3)
+                ms = self.font_small.render(self.move_history_san[i+1], True,
+                    TEXT_BRIGHT if is_last else TEXT_COLOR)
+                self.screen.blit(ms, (PANEL_X + 98, y))
+
+        self.screen.set_clip(None)
+
+        # Botones inferiores del panel
+        btn_y = BOARD_Y + BOARD_SIZE - 42
+        if self.mode == "analysis":
+            buttons = [
+                ("⟳", self.reset_game, ACCENT),
+                ("⇄", self.flip_board, ACCENT2),
+                ("←", self.undo_move, TEXT_DIM),
+                ("💾", self.save_pgn, (200, 180, 80)),
+                ("☰", self.go_menu, TEXT_DIM),
+            ]
+        else:
+            buttons = [
+                ("⟳", self.reset_game, ACCENT),
+                ("⇄", self.flip_board, ACCENT2),
+                ("←", self.undo_move, TEXT_DIM),
+                ("💾", self.save_pgn, (200, 180, 80)),
+                ("☰", self.go_menu, TEXT_DIM),
+            ]
+        bw = (PANEL_W - 20) // len(buttons)
+        mx, my = pygame.mouse.get_pos()
+        for i, (label, action, color) in enumerate(buttons):
+            bx = PANEL_X + 5 + i * bw
+            by = btn_y
+            brect = pygame.Rect(bx, by, bw - 4, 34)
+            hovered = brect.collidepoint(mx, my)
+            bg = (50, 49, 46) if hovered else (38, 37, 34)
+            pygame.draw.rect(self.screen, bg, brect, border_radius=6)
+            lbl = self.font_large.render(label, True, color if not hovered else TEXT_BRIGHT)
+            self.screen.blit(lbl, (bx + bw//2 - lbl.get_width()//2 - 2, by + 5))
+
+        # Turno actual
+        if not self.game_over:
+            turno = "Turno: " + ("⬜ Blancas" if self.board.turn == chess.WHITE else "⬛ Negras")
+            t_surf = self.font_small.render(turno, True, TEXT_COLOR)
+            self.screen.blit(t_surf, (PANEL_X + 10, BOARD_Y + BOARD_SIZE - 60))
+
+        # Modo
+        mode_names = {"pvp": "PvP", "vsai": f"vs IA (d{self.ai_depth})", "analysis": "Análisis"}
+        m_surf = self.font_tiny.render(mode_names.get(self.mode, ""), True, TEXT_DIM)
+        self.screen.blit(m_surf, (PANEL_X + PANEL_W - m_surf.get_width() - 12, BOARD_Y + 10))
+
+        # Toast "PGN guardado"
+        if self.pgn_saved_msg and (time.time() - self.pgn_saved_time) < 3:
+            toast_surf = self.font_small.render(self.pgn_saved_msg, True, BG_COLOR)
+            tw = toast_surf.get_width() + 20
+            tx = PANEL_X + (PANEL_W - tw) // 2
+            ty = BOARD_Y + BOARD_SIZE - 80
+            pygame.draw.rect(self.screen, ACCENT, pygame.Rect(tx, ty, tw, 26), border_radius=6)
+            self.screen.blit(toast_surf, (tx + 10, ty + 4))
+
+        # Mini gráfico de evaluación (solo análisis)
+        if self.mode == "analysis" and len(self.eval_history) > 1:
+            self.draw_eval_graph()
+
+    def draw_game_over(self):
+        overlay = pygame.Surface((WINDOW_W, WINDOW_H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
+        self.screen.blit(overlay, (0, 0))
+
+        pw, ph = 440, 240
+        px = WINDOW_W//2 - pw//2
+        py = WINDOW_H//2 - ph//2
+        panel_rect = pygame.Rect(px, py, pw, ph)
+        pygame.draw.rect(self.screen, PANEL_COLOR, panel_rect, border_radius=14)
+        pygame.draw.rect(self.screen, ACCENT, panel_rect, 2, border_radius=14)
+
+        # Icono
+        lines = self.game_over_msg.split('\n')
+        icon = lines[0] if lines else "🏁"
+        icon_surf = self.font_xl.render(icon, True, ACCENT)
+        self.screen.blit(icon_surf, (WINDOW_W//2 - icon_surf.get_width()//2, py + 25))
+
+        if len(lines) > 1:
+            msg_surf = self.font_large.render(lines[1], True, TEXT_BRIGHT)
+            self.screen.blit(msg_surf, (WINDOW_W//2 - msg_surf.get_width()//2, py + 80))
+        if len(lines) > 2:
+            sub_surf = self.font_med.render(lines[2], True, TEXT_COLOR)
+            self.screen.blit(sub_surf, (WINDOW_W//2 - sub_surf.get_width()//2, py + 115))
+
+        mx, my = pygame.mouse.get_pos()
+        for i, (label, action) in enumerate([("Nueva Partida", self.reset_game), ("Menú", self.go_menu)]):
+            bx, by = WINDOW_W//2 - 180 + i*190, py + 160
+            brect = pygame.Rect(bx, by, 170, 44)
+            hov = brect.collidepoint(mx, my)
+            c = ACCENT if i==0 else ACCENT2
+            pygame.draw.rect(self.screen, c if hov else (50,49,46), brect, border_radius=8)
+            ls = self.font_med.render(label, True, BG_COLOR if hov else TEXT_COLOR)
+            self.screen.blit(ls, (bx + 85 - ls.get_width()//2, by + 12))
+
+    def draw_thinking(self):
+        elapsed = time.time() - self.ai_think_start
+        dots = "." * (int(elapsed * 2) % 4)
+        txt = self.font_med.render(f"IA pensando{dots}", True, ACCENT)
+        bx, by = BOARD_X + BOARD_SIZE//2 - 80, BOARD_Y + BOARD_SIZE + 50
+        pygame.draw.rect(self.screen, PANEL_COLOR,
+            pygame.Rect(bx-10, by-5, txt.get_width()+20, txt.get_height()+10), border_radius=5)
+        self.screen.blit(txt, (bx, by))
+
+    def draw_particles(self):
+        now = time.time()
+        alive = []
+        for p in self.particles:
+            age = now - p['start']
+            if age < p['life']:
+                alpha = int(255 * (1 - age/p['life']))
+                surf = pygame.Surface((p['size']*2, p['size']*2), pygame.SRCALPHA)
+                pygame.draw.circle(surf, (*p['color'], alpha), (p['size'], p['size']), p['size'])
+                self.screen.blit(surf, (int(p['x'] - p['size']), int(p['y'] - p['size'])))
+                p['x'] += p['vx']
+                p['y'] += p['vy']
+                p['vy'] += 0.2
+                alive.append(p)
+        self.particles = alive
+
+    # ─── LÓGICA DEL JUEGO ──────────────────────────────────────────────────────
+    def spawn_particles(self, sq, color=(138, 196, 33)):
+        x, y = self.center_of_sq(sq)
+        for _ in range(18):
+            angle = random.uniform(0, math.pi*2)
+            speed = random.uniform(2, 7)
+            self.particles.append({
+                'x': x, 'y': y,
+                'vx': math.cos(angle)*speed,
+                'vy': math.sin(angle)*speed - 3,
+                'color': color,
+                'size': random.randint(3, 8),
+                'life': random.uniform(0.4, 0.9),
+                'start': time.time(),
+            })
+
+    def handle_square_click(self, sq):
+        if self.game_over or self.promotion_pending or self.ai_thinking:
+            return
+        if self.mode == "vsai" and self.board.turn == self.ai_color:
+            return
+
+        piece = self.board.piece_at(sq)
+
+        if self.selected_sq is None:
+            if piece and piece.color == self.board.turn:
+                self.selected_sq = sq
+                self.legal_moves_from = [m for m in self.board.legal_moves
+                                          if m.from_square == sq]
+        else:
+            move = self.find_move(self.selected_sq, sq)
+            if move:
+                self.attempt_move(move)
+            elif piece and piece.color == self.board.turn:
+                self.selected_sq = sq
+                self.legal_moves_from = [m for m in self.board.legal_moves
+                                          if m.from_square == sq]
+            else:
+                self.selected_sq = None
+                self.legal_moves_from = []
+
+    def find_move(self, from_sq, to_sq):
+        for move in self.board.legal_moves:
+            if move.from_square == from_sq and move.to_square == to_sq:
+                if move.promotion:
+                    # Siempre promovemos a reina por defecto (o mostramos menú)
+                    return move  # retornamos el primero (puede haber varios por promo)
+                return move
+        return None
+
+    def attempt_move(self, move):
+        # ¿Requiere promoción?
+        piece = self.board.piece_at(move.from_square)
+        if (piece and piece.piece_type == chess.PAWN and
+                chess.square_rank(move.to_square) in (0, 7)):
+            # Múltiples opciones de promoción
+            promos = [m for m in self.board.legal_moves
+                      if m.from_square == move.from_square and m.to_square == move.to_square
+                      and m.promotion]
+            if promos:
+                self.promotion_pending = promos
+                self.promotion_sq = move.to_square
+                self.selected_sq = None
+                self.legal_moves_from = []
+                return
+
+        self.execute_move(move)
+
+    def execute_move(self, move):
+        # Guardar pieza para animación
+        piece = self.board.piece_at(move.from_square)
+        captured = self.board.piece_at(move.to_square)
+        if captured:
+            if captured.color == chess.WHITE:
+                self.captured_white.append(captured)
+            else:
+                self.captured_black.append(captured)
+
+        # Iniciar animación
+        self.anim_piece = piece
+        self.anim_from_pos = self.sq_to_pixel(move.from_square)
+        self.anim_to_pos = self.sq_to_pixel(move.to_square)
+        self.anim_move = move
+        self.anim_start = time.time()
+
+        san = self.board.san(move)
+        mover_color = self.board.turn   # color ANTES de push
+        self.board.push(move)
+        self.last_move = move
+        self.move_history.append(move.uci())
+        self.move_history_san.append(san)
+
+        # Aplicar incremento al jugador que acaba de mover
+        if self.use_timer and len(self.move_history) > 1:
+            if mover_color == chess.WHITE:
+                self.time_white = min(self.time_white + self.time_increment, self.time_selected + 60)
+            else:
+                self.time_black = min(self.time_black + self.time_increment, self.time_selected + 60)
+
+        self.selected_sq = None
+        self.legal_moves_from = []
+
+        # Partículas en captura
+        if captured:
+            self.spawn_particles(move.to_square, (220, 100, 50))
+        elif self.board.is_check():
+            king_sq = self.board.king(self.board.turn)
+            if king_sq:
+                self.spawn_particles(king_sq, (220, 50, 50))
+
+        # Verificar fin
+        self.check_game_over()
+
+        # Actualizar evaluación en modo análisis
+        if self.mode == "analysis":
+            self.update_eval()
+            self.eval_history.append(self.eval_score)
+
+        # Turno IA
+        if (self.mode == "vsai" and self.board.turn == self.ai_color
+                and not self.game_over):
+            self.ai_thinking = True
+            self.ai_think_start = time.time()
+            self.start_ai_search()
+        elif not self.game_over:
+            # Si hay premove registrado y ahora es turno del jugador, ejecutarlo
+            self.try_execute_premove()
+
+    def check_game_over(self):
+        if self.board.is_checkmate():
+            winner = "Blancas" if self.board.turn == chess.BLACK else "Negras"
+            self.game_over = True
+            self.game_over_msg = f"♛\n¡Jaque Mate!\n{winner} ganan"
+            self.spawn_particles(self.board.king(chess.WHITE if winner=="Blancas" else chess.BLACK),
+                                  ACCENT)
+        elif self.board.is_stalemate():
+            self.game_over = True
+            self.game_over_msg = "⚖\nAhogado\nTablas"
+        elif self.board.is_insufficient_material():
+            self.game_over = True
+            self.game_over_msg = "⚖\nMaterial insuficiente\nTablas"
+        elif self.board.is_seventyfive_moves():
+            self.game_over = True
+            self.game_over_msg = "⚖\nRegla de los 75 movimientos\nTablas"
+        elif self.board.is_fivefold_repetition():
+            self.game_over = True
+            self.game_over_msg = "⚖\nRepetición\nTablas"
+
+    def start_ai_search(self):
+        """Lanza el cálculo del movimiento de la IA en un hilo aparte
+        para no bloquear el loop principal (dibujo/eventos) durante la búsqueda."""
+        self.ai_move_ready = False
+        self.ai_result_move = None
+        board_copy = self.board.copy()
+        depth = self.ai_depth
+
+        def worker():
+            move = self.engine.get_best_move(board_copy, depth=depth)
+            self.ai_result_move = move
+            self.ai_move_ready = True
+
+        self.ai_thread = threading.Thread(target=worker, daemon=True)
+        self.ai_thread.start()
+
+    def ai_move(self):
+        move = self.ai_result_move
+        self.ai_thread = None
+        self.ai_move_ready = False
+        self.ai_result_move = None
+        if move and move in self.board.legal_moves:
+            self.execute_move(move)
+        self.ai_thinking = False
+        # Ejecutar premove si hay uno registrado
+        if not self.game_over:
+            self.try_execute_premove()
+
+    def reset_game(self):
+        self.board = chess.Board()
+        self.selected_sq = None
+        self.legal_moves_from = []
+        self.last_move = None
+        self.move_history = []
+        self.move_history_san = []
+        self.history_scroll = 0
+        self.promotion_pending = None
+        self.game_over = False
+        self.game_over_msg = ""
+        self.ai_thinking = False
+        self.ai_thread = None
+        self.ai_move_ready = False
+        self.ai_result_move = None
+        self.captured_white = []
+        self.captured_black = []
+        self.particles = []
+        self.anim_move = None
+        self.dragging = False
+        self.drag_piece = None
+        self.clear_premove()
+        self.eval_score = 0.0
+        self.eval_history = []
+        self.pgn_saved_msg = ""
+        self.pgn_saved_time = 0
+        self.time_white = self.time_selected
+        self.time_black = self.time_selected
+        self.time_last = time.time()
+
+    def undo_move(self):
+        if self.board.move_stack and not self.ai_thinking:
+            self.board.pop()
+            if self.move_history:
+                self.move_history.pop()
+            if self.move_history_san:
+                self.move_history_san.pop()
+            # En modo IA, deshacer 2 movimientos
+            if self.mode == "vsai" and self.board.move_stack:
+                self.board.pop()
+                if self.move_history:
+                    self.move_history.pop()
+                if self.move_history_san:
+                    self.move_history_san.pop()
+            self.selected_sq = None
+            self.legal_moves_from = []
+            self.last_move = self.board.peek() if self.board.move_stack else None
+            self.game_over = False
+            self.ai_thinking = False
+
+    def clear_premove(self):
+        self.premove_from = None
+        self.premove_to   = None
+        self.premove_piece = None
+
+    def try_execute_premove(self):
+        """Intenta ejecutar el premove guardado. Si ya no es válido, lo descarta."""
+        if self.premove_from is None or self.premove_to is None:
+            return
+        # Buscar el movimiento en los legales del nuevo estado
+        move = None
+        for m in self.board.legal_moves:
+            if m.from_square == self.premove_from and m.to_square == self.premove_to:
+                move = m
+                break
+        self.clear_premove()
+        if move:
+            self.attempt_move(move)
+
+    def draw_eval_graph(self):
+        """Mini gráfico de evaluación a lo largo de la partida."""
+        gx = PANEL_X + 5
+        gy = BOARD_Y + BOARD_SIZE - 110
+        gw = PANEL_W - 20
+        gh = 50
+
+        # Fondo
+        pygame.draw.rect(self.screen, (35, 34, 31), pygame.Rect(gx, gy, gw, gh), border_radius=4)
+        pygame.draw.rect(self.screen, BORDER_COLOR, pygame.Rect(gx, gy, gw, gh), 1, border_radius=4)
+
+        # Línea central (eval = 0)
+        mid_y = gy + gh // 2
+        pygame.draw.line(self.screen, (60, 59, 56), (gx+2, mid_y), (gx+gw-2, mid_y), 1)
+
+        history = self.eval_history
+        n = len(history)
+        if n < 2:
+            return
+
+        MAX_E = 800
+        pts_white, pts_black = [], []
+        for i, e in enumerate(history):
+            x = gx + 2 + int(i / (n - 1) * (gw - 4))
+            clamped = max(-MAX_E, min(MAX_E, e))
+            # Positivo = blancas arriba (hacia arriba en pantalla = menor y)
+            y = mid_y - int((clamped / MAX_E) * (gh // 2 - 2))
+            if clamped >= 0:
+                pts_white.append((x, y))
+                pts_black.append((x, mid_y))
+            else:
+                pts_white.append((x, mid_y))
+                pts_black.append((x, y))
+
+        # Rellenar área blanca (arriba de la línea central)
+        if len(pts_white) >= 2:
+            poly = [(gx+2, mid_y)] + pts_white + [(pts_white[-1][0], mid_y)]
+            pygame.draw.polygon(self.screen, (200, 195, 180), poly)
+        # Rellenar área negra (abajo)
+        if len(pts_black) >= 2:
+            poly = [(gx+2, mid_y)] + pts_black + [(pts_black[-1][0], mid_y)]
+            pygame.draw.polygon(self.screen, (50, 49, 46), poly)
+
+        # Línea de evaluación
+        pts_line = []
+        for i, e in enumerate(history):
+            x = gx + 2 + int(i / (n - 1) * (gw - 4))
+            clamped = max(-MAX_E, min(MAX_E, e))
+            y = mid_y - int((clamped / MAX_E) * (gh // 2 - 2))
+            pts_line.append((x, y))
+        if len(pts_line) >= 2:
+            pygame.draw.lines(self.screen, ACCENT, False, pts_line, 1)
+
+        lbl = self.font_tiny.render("Evaluación", True, TEXT_DIM)
+        self.screen.blit(lbl, (gx + 2, gy - 12))
+
+    def save_pgn(self):
+        """Guarda la partida actual en formato PGN."""
+        import datetime, tkinter, tkinter.filedialog, tkinter.messagebox
+        if not self.move_history_san:
+            try:
+                root = tkinter.Tk(); root.withdraw()
+                tkinter.messagebox.showinfo("CabreChess", "No hay movimientos para guardar.")
+                root.destroy()
+            except:
+                pass
+            return
+
+        # Construir PGN
+        now = datetime.datetime.now()
+        date_str = now.strftime("%Y.%m.%d")
+        mode_tag = {"pvp": "PvP", "vsai": "vs IA", "analysis": "Análisis"}.get(self.mode, "?")
+
+        result = "*"
+        if self.board.is_checkmate():
+            result = "0-1" if self.board.turn == chess.WHITE else "1-0"
+        elif self.board.is_stalemate() or self.board.is_insufficient_material():
+            result = "1/2-1/2"
+
+        white_name = self.pgn_white
+        black_name = self.pgn_black
+        if self.mode == "vsai":
+            if self.ai_color == chess.BLACK:
+                black_name = "CabreChess AI"
+            else:
+                white_name = "CabreChess AI"
+
+        lines = [
+            f'[Event "CabreChess — {mode_tag}"]',
+            f'[Site "CabreChess by Federico Cabrera"]',
+            f'[Date "{date_str}"]',
+            f'[White "{white_name}"]',
+            f'[Black "{black_name}"]',
+            f'[Result "{result}"]',
+            '',
+        ]
+
+        # Movimientos en formato PGN
+        moves_line = ""
+        for i, san in enumerate(self.move_history_san):
+            if i % 2 == 0:
+                moves_line += f"{i//2 + 1}. "
+            moves_line += san + " "
+        moves_line += result
+        # Partir en líneas de ~80 chars
+        words = moves_line.split()
+        line, pgn_moves = "", []
+        for w in words:
+            if len(line) + len(w) + 1 > 80:
+                pgn_moves.append(line.rstrip())
+                line = w + " "
+            else:
+                line += w + " "
+        if line.strip():
+            pgn_moves.append(line.rstrip())
+        lines += pgn_moves
+
+        pgn_text = "\n".join(lines) + "\n"
+
+        # Guardar con diálogo de archivo
+        try:
+            root = tkinter.Tk()
+            root.withdraw()
+            root.lift()
+            filename = tkinter.filedialog.asksaveasfilename(
+                defaultextension=".pgn",
+                filetypes=[("PGN files", "*.pgn"), ("All files", "*.*")],
+                initialfile=f"CabreChess_{date_str.replace('.','')}.pgn",
+                title="Guardar partida PGN",
+            )
+            root.destroy()
+            if filename:
+                with open(filename, "w", encoding="utf-8") as f:
+                    f.write(pgn_text)
+                self.pgn_saved_msg = f"Guardado: {filename.split('/')[-1].split(chr(92))[-1]}"
+                self.pgn_saved_time = time.time()
+        except Exception as e:
+            print(f"Error guardando PGN: {e}")
+
+    def update_eval(self):
+        """Calcula evaluación estática para la posición actual."""
+        if self.mode != "analysis":
+            return
+        raw = self.engine.evaluate(self.board)
+        # Suavizar un poco para que no salte bruscamente
+        self.eval_score = raw * 0.01  # convertir a centipawns display
+        # En realidad evaluate() ya devuelve en centipawns, ajustar
+        self.eval_score = raw
+
+    def flip_board(self):
+        self.flipped = not self.flipped
+
+    def go_menu(self):
+        self.mode = "menu"
+        self.reset_game()
+
+    # ─── EVENTOS ────────────────────────────────────────────────────────────────
+    def handle_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    if self.premove_from is not None:
+                        self.clear_premove()
+                    elif self.mode != "menu":
+                        self.go_menu()
+                    else:
+                        return False
+                elif event.key == pygame.K_f:
+                    self.flip_board()
+                elif event.key == pygame.K_r:
+                    self.reset_game()
+                elif event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL):
+                    self.undo_move()
+
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    self.handle_click(event.pos)
+                elif event.button == 3:   # click derecho cancela premove
+                    self.clear_premove()
+                    self.selected_sq = None
+                    self.legal_moves_from = []
+
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 1 and self.dragging:
+                    self.handle_drop(event.pos)
+
+            elif event.type == pygame.MOUSEMOTION:
+                if self.dragging:
+                    self.drag_pos = event.pos
+                mx, my = event.pos
+                self.hover_sq = self.pixel_to_sq(mx, my)
+
+        return True
+
+    def handle_click(self, pos):
+        mx, my = pos
+
+        if self.mode == "menu":
+            self.handle_menu_click(pos)
+            return
+
+        # Promo
+        if self.promotion_pending:
+            self.handle_promotion_click(pos)
+            return
+
+        # Game over buttons
+        if self.game_over:
+            self.handle_game_over_click(pos)
+            return
+
+        # Botones del panel
+        btn_y = BOARD_Y + BOARD_SIZE - 42
+        if self.mode == "analysis":
+            buttons_actions = [self.reset_game, self.flip_board, self.undo_move, self.save_pgn, self.go_menu]
+        else:
+            buttons_actions = [self.reset_game, self.flip_board, self.undo_move, self.save_pgn, self.go_menu]
+        bw2 = (PANEL_W - 20) // len(buttons_actions)
+        for i, action in enumerate(buttons_actions):
+            bx = PANEL_X + 5 + i * bw2
+            r = pygame.Rect(bx, btn_y, bw2-4, 34)
+            if r.collidepoint(mx, my):
+                action()
+                return
+
+        sq = self.pixel_to_sq(mx, my)
+        if sq is None:
+            return
+
+        piece = self.board.piece_at(sq)
+        player_color = chess.WHITE if self.board.turn == chess.WHITE else chess.BLACK
+        if self.mode == "vsai":
+            player_color = chess.WHITE if self.ai_color == chess.BLACK else chess.BLACK
+
+        is_my_turn = (self.board.turn == player_color)
+        opponent_moving = not is_my_turn and not self.game_over
+
+        # ── Es turno del jugador ──
+        if is_my_turn and not self.ai_thinking:
+            if self.selected_sq is not None:
+                # Ya hay una pieza seleccionada
+                if sq == self.selected_sq:
+                    # Click en la misma pieza: deseleccionar
+                    self.selected_sq = None
+                    self.legal_moves_from = []
+                    self.dragging = False
+                elif piece and piece.color == self.board.turn:
+                    # Click en otra pieza propia: cambiar selección
+                    self.selected_sq = sq
+                    self.legal_moves_from = [m for m in self.board.legal_moves
+                                              if m.from_square == sq]
+                    self.drag_piece = piece
+                    self.drag_from = sq
+                    self.drag_pos = pos
+                    self.dragging = True
+                else:
+                    # Click en destino: intentar mover
+                    move = self.find_move(self.selected_sq, sq)
+                    if move:
+                        self.dragging = False
+                        self.drag_piece = None
+                        self.drag_from = None
+                        self.attempt_move(move)
+                    else:
+                        # Destino inválido: deseleccionar
+                        self.selected_sq = None
+                        self.legal_moves_from = []
+                        self.dragging = False
+            else:
+                # Sin selección previa: seleccionar pieza propia e iniciar drag
+                if piece and piece.color == self.board.turn:
+                    self.clear_premove()
+                    self.selected_sq = sq
+                    self.legal_moves_from = [m for m in self.board.legal_moves
+                                              if m.from_square == sq]
+                    self.drag_piece = piece
+                    self.drag_from = sq
+                    self.drag_pos = pos
+                    self.dragging = True
+            return
+
+        # ── No es turno del jugador: registrar premove ──
+        if opponent_moving or self.ai_thinking:
+            own_piece = piece and piece.color == player_color
+            if self.premove_from is None:
+                if own_piece:
+                    self.premove_from = sq
+                    self.premove_to = None
+                    self.premove_piece = piece
+            else:
+                if sq == self.premove_from:
+                    self.clear_premove()
+                elif own_piece:
+                    self.premove_from = sq
+                    self.premove_to = None
+                    self.premove_piece = piece
+                else:
+                    self.premove_to = sq
+
+    def handle_drop(self, pos):
+        self.dragging = False
+        sq = self.pixel_to_sq(*pos)
+
+        if self.drag_from is None:
+            self.drag_piece = None
+            return
+
+        player_color = chess.WHITE if self.ai_color == chess.BLACK else chess.BLACK
+        if self.mode != "vsai":
+            player_color = self.board.turn
+
+        is_my_turn = (self.board.turn == player_color)
+
+        if is_my_turn:
+            if sq is not None and sq != self.drag_from:
+                # Soltar en casilla diferente: intentar mover
+                move = self.find_move(self.drag_from, sq)
+                if move:
+                    self.selected_sq = None
+                    self.legal_moves_from = []
+                    self.attempt_move(move)
+                else:
+                    # Destino inválido: mantener selección para click-to-move
+                    self.selected_sq = self.drag_from
+                    self.legal_moves_from = [m for m in self.board.legal_moves
+                                              if m.from_square == self.drag_from]
+            # Si soltó en la misma casilla: la selección ya quedó activa desde handle_click
+        else:
+            # Drag en turno rival → premove destino
+            if sq is not None and sq != self.drag_from:
+                self.premove_from = self.drag_from
+                self.premove_to = sq
+                self.premove_piece = self.drag_piece
+            else:
+                self.clear_premove()
+
+        self.drag_piece = None
+        self.drag_from = None
+
+    def handle_promotion_click(self, pos):
+        mx, my = pos
+        pieces = [chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT]
+        pw, ph = 200, 60
+        px = WINDOW_W//2 - pw//2
+        py = WINDOW_H//2 - (len(pieces)*ph + 40)//2
+        for i, pt in enumerate(pieces):
+            bx, by = px, py + 30 + i*ph
+            brect = pygame.Rect(bx, by, pw, ph - 8)
+            if brect.collidepoint(mx, my):
+                # Buscar el movimiento de promoción con esta pieza
+                for move in self.promotion_pending:
+                    if move.promotion == pt:
+                        self.promotion_pending = None
+                        self.execute_move(move)
+                        return
+
+    def handle_game_over_click(self, pos):
+        mx, my = pos
+        pw, ph = 440, 240
+        px = WINDOW_W//2 - pw//2
+        py = WINDOW_H//2 - ph//2
+        for i, (label, action) in enumerate([("Nueva Partida", self.reset_game), ("Menú", self.go_menu)]):
+            bx, by = WINDOW_W//2 - 180 + i*190, py + 160
+            brect = pygame.Rect(bx, by, 170, 44)
+            if brect.collidepoint(mx, my):
+                action()
+                return
+
+    def handle_menu_click(self, pos):
+        mx, my = pos
+        actions = [("vsai", 340), ("pvp", 420), ("analysis", 500)]
+        for action, by in actions:
+            brect = pygame.Rect(WINDOW_W//2 - 160, by, 320, 52)
+            if brect.collidepoint(mx, my):
+                self.start_game(action)
+                return
+
+        # Dificultad
+        diff_y = 570
+        levels = [(1, 0), (3, 90), (5, 180)]
+        for d, dx in levels:
+            bx2 = WINDOW_W//2 - 80 + dx
+            r = pygame.Rect(bx2, diff_y - 3, 80, 26)
+            if r.collidepoint(mx, my):
+                self.ai_depth = d
+                return
+
+        # Tiempo
+        time_y = 618
+        time_opts = [60, 180, 300, 600]
+        for i, secs in enumerate(time_opts):
+            bx3 = WINDOW_W//2 - 80 + i*72
+            r3 = pygame.Rect(bx3, time_y - 3, 68, 26)
+            if r3.collidepoint(mx, my):
+                self.time_selected = secs
+                return
+
+    def start_game(self, mode):
+        self.reset_game()
+        self.mode = mode
+        if mode == "vsai":
+            self.ai_color = chess.BLACK
+        # Sin reloj en modo análisis
+        self.use_timer = (mode != "analysis")
+
+    # ─── LOOP PRINCIPAL ─────────────────────────────────────────────────────────
+    def update(self):
+        now = time.time()
+
+        # Temporizador — corre siempre excepto en menú, fin de juego o promoción
+        if (self.use_timer and self.mode != "menu" and
+                not self.game_over and not self.promotion_pending):
+            dt = now - self.time_last
+            # No descontar durante el "think delay" visual de la IA
+            if not self.ai_thinking:
+                if self.board.turn == chess.WHITE:
+                    self.time_white = max(0, self.time_white - dt)
+                    if self.time_white == 0:
+                        self.game_over = True
+                        self.game_over_msg = "⏱\nTiempo agotado\nNegras ganan"
+                else:
+                    self.time_black = max(0, self.time_black - dt)
+                    if self.time_black == 0:
+                        self.game_over = True
+                        self.game_over_msg = "⏱\nTiempo agotado\nBlancas ganan"
+        self.time_last = now
+
+        # IA — el cálculo corre en un hilo aparte (start_ai_search); acá solo
+        # esperamos que termine y que haya pasado el delay visual mínimo.
+        if (self.ai_thinking and self.ai_move_ready
+                and (now - self.ai_think_start) >= self.ai_delay):
+            self.ai_move()
+
+    def run(self):
+        running = True
+        while running:
+            running = self.handle_events()
+            self.update()
+            self.draw()
+            self.clock.tick(60)
+        pygame.quit()
+        sys.exit()
+
+
+# ─── ENTRY POINT ────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    game = CabreChess()
+    game.run()
