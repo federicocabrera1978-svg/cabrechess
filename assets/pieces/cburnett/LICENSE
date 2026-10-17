@@ -1,0 +1,16 @@
+cburnett chess piece set
+========================
+
+Author: Colin M.L. Burnett (cburnett)
+Source: https://github.com/lichess-org/lila/tree/master/public/piece/cburnett
+        (also published for Lichess; originally released as public domain /
+         Creative Commons CC0 by the author, redistributed by Lichess under
+         the GPLv2+ terms of the Lichess project)
+
+License: GPLv2 or later (as redistributed by Lichess), and/or public domain /
+         CC0 as originally released by Colin M.L. Burnett.
+
+The SVG originals were converted to 256x256 RGBA PNG for use in CabreChess.
+CabreChess itself is GPL-3.0; using this set is compatible with that license.
+
+See also: https://github.com/lichess-org/lila/blob/master/COPYING.md

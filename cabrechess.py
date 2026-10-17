@@ -75,13 +75,9 @@ PIECE_UNICODE = {
     (chess.PAWN,   chess.BLACK): '♟',
 }
 
-# ─── PIEZAS DIBUJADAS EN CÓDIGO ─────────────────────────────────────────────────
-# Cada pieza se dibuja con primitivas de pygame (sin imágenes ni fuentes externas):
-# se arma a 4x de resolución y se reduce con smoothscale para que los bordes
-# salgan suavizados (anti-aliasing). Cada parte (base, cuerpo, collar, cabeza,
-# corona, etc.) lleva su propio contorno, así se ven las separaciones como en
-# un set de torneo. Estilo compartido: marfil (blancas) / grafito (negras),
-# degradé, brillo y sombra.
+# ─── PIEZAS DIBUJADAS EN CÓDIGO (RESPALDO) ──────────────────────────────────────
+# Usadas solo si faltan los PNG de assets/pieces/cburnett/. Se arman a 4x y se
+# reducen con smoothscale (anti-aliasing). Estilo marfil / grafito.
 PIECE_SUPERSAMPLE = 4
 PIECE_STYLE = {
     # color de pieza: (relleno claro, relleno oscuro, contorno, brillo)
@@ -258,11 +254,8 @@ _PIECE_SHINE = {
 }
 
 
-def make_piece_sprite(piece_type, color, size):
-    """Superficie RGBA de size x size con la pieza del color pedido (cacheada)."""
-    key = (piece_type, color, size)
-    if key in _piece_cache:
-        return _piece_cache[key]
+def _make_piece_sprite_drawn(piece_type, color, size):
+    """Pieza dibujada por codigo (respaldo si faltan las imagenes cburnett)."""
     s = size * PIECE_SUPERSAMPLE
     light, dark, outline, shine = PIECE_STYLE[color]
     stroke = max(2, round(s * 0.020))
@@ -297,7 +290,68 @@ def make_piece_sprite(piece_type, color, size):
         pygame.draw.ellipse(hl, shine, pygame.Rect(hx * s, hy * s, hrx * s, hry * s))
     big.blit(hl, (0, 0))
 
-    sprite = pygame.transform.smoothscale(big, (size, size))
+    return pygame.transform.smoothscale(big, (size, size))
+
+
+# ─── PIEZAS CBURNETT (LICHESS) ────────────────────────────────────────────────
+# Set de piezas "cburnett" de Colin M.L. Burnett, el mismo que usa Lichess.
+# Licencia GPLv2+ (ver assets/pieces/cburnett/LICENSE). Dominio publico / GPL.
+# Las imagenes viven en assets/pieces/cburnett/*.png (SVG convertidos a 256px).
+def _assets_root():
+    """Carpeta de assets: al lado del .py, o dentro del bundle PyInstaller."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / "assets" / "pieces" / "cburnett"
+    return Path(__file__).resolve().parent / "assets" / "pieces" / "cburnett"
+
+
+_ASSETS_DIR = _assets_root()
+_CBURNETT_FILE = {
+    (chess.KING,   chess.WHITE): "wK.png",
+    (chess.QUEEN,  chess.WHITE): "wQ.png",
+    (chess.ROOK,   chess.WHITE): "wR.png",
+    (chess.BISHOP, chess.WHITE): "wB.png",
+    (chess.KNIGHT, chess.WHITE): "wN.png",
+    (chess.PAWN,   chess.WHITE): "wP.png",
+    (chess.KING,   chess.BLACK): "bK.png",
+    (chess.QUEEN,  chess.BLACK): "bQ.png",
+    (chess.ROOK,   chess.BLACK): "bR.png",
+    (chess.BISHOP, chess.BLACK): "bB.png",
+    (chess.KNIGHT, chess.BLACK): "bN.png",
+    (chess.PAWN,   chess.BLACK): "bP.png",
+}
+_cburnett_raw = {}  # (piece_type, color) -> Surface RGBA a resolucion nativa
+
+
+def _load_cburnett_raw(piece_type, color):
+    key = (piece_type, color)
+    if key in _cburnett_raw:
+        return _cburnett_raw[key]
+    path = _ASSETS_DIR / _CBURNETT_FILE[key]
+    if not path.is_file():
+        _cburnett_raw[key] = None
+        return None
+    img = pygame.image.load(str(path)).convert_alpha()
+    _cburnett_raw[key] = img
+    return img
+
+
+def make_piece_sprite(piece_type, color, size):
+    """Superficie RGBA de size x size con la pieza del color pedido (cacheada).
+
+    Preferencia: PNG del set cburnett (Lichess). Si falta el archivo, se cae
+    al dibujo procedural anterior para no romper el juego.
+    """
+    key = (piece_type, color, size)
+    if key in _piece_cache:
+        return _piece_cache[key]
+    raw = _load_cburnett_raw(piece_type, color)
+    if raw is not None:
+        if raw.get_width() == size and raw.get_height() == size:
+            sprite = raw
+        else:
+            sprite = pygame.transform.smoothscale(raw, (size, size))
+    else:
+        sprite = _make_piece_sprite_drawn(piece_type, color, size)
     _piece_cache[key] = sprite
     return sprite
 
@@ -607,9 +661,8 @@ class CabreChess:
         elif kind == "draw":     # tablas: ½
             surf = self.font_xl.render("½", True, color)
             scr.blit(surf, (cx - surf.get_width() // 2, cy - surf.get_height() // 2))
-        elif kind == "mate":     # dama (fuente de piezas verificada)
-            surf = self.font_piece.render('♛', True, color)
-            surf = pygame.transform.smoothscale(surf, (size, int(surf.get_height() * size / surf.get_width())))
+        elif kind == "mate":     # dama cburnett
+            surf = make_piece_sprite(chess.QUEEN, chess.BLACK, size)
             scr.blit(surf, (cx - surf.get_width() // 2, cy - surf.get_height() // 2))
 
     # ─── RENDER ESTÁTICO ────────────────────────────────────────────────────────
@@ -677,8 +730,8 @@ class CabreChess:
         self.screen.blit(title_surf, (tx, 90))
         self.screen.blit(sub_surf, (WINDOW_W//2 - sub_surf.get_width()//2, 155))
 
-        # Pieza decorativa
-        king_surf = self.font_piece.render('♚', True, (60, 59, 56))
+        # Pieza decorativa (cburnett)
+        king_surf = make_piece_sprite(chess.KING, chess.BLACK, 64)
         self.screen.blit(king_surf, (WINDOW_W//2 - king_surf.get_width()//2, 185))
 
         # Botones
@@ -693,8 +746,13 @@ class CabreChess:
             # Ícono + texto centrados como bloque
             total_w = 28 + lbl.get_width()
             ix = rect.centerx - total_w // 2
-            if icon.startswith("glyph:"):
-                g = self.font_piece_sm.render(icon[6:], True, tc)
+            if icon.startswith("piece:"):
+                # piece:W/K etc -> color + type short codes
+                code = icon[6:]
+                color = chess.WHITE if code[0] == "W" else chess.BLACK
+                ptype = {"K": chess.KING, "Q": chess.QUEEN, "R": chess.ROOK,
+                         "B": chess.BISHOP, "N": chess.KNIGHT, "P": chess.PAWN}[code[1]]
+                g = make_piece_sprite(ptype, color, 22)
                 self.screen.blit(g, (ix + 10 - g.get_width() // 2, rect.centery - g.get_height() // 2))
             else:
                 self.draw_icon(icon, (ix + 10, rect.centery), tc, size=18)
@@ -716,8 +774,8 @@ class CabreChess:
     # Layout del menú: una sola fuente de verdad para dibujo y clics
     def menu_main_buttons(self):
         items = [
-            ("Jugar contra IA",    "glyph:♟", "vsai",     ACCENT),
-            ("2 Jugadores (PvP)",  "glyph:♞", "pvp",      ACCENT2),
+            ("Jugar contra IA",    "piece:BP", "vsai",     ACCENT),
+            ("2 Jugadores (PvP)",  "piece:WN", "pvp",      ACCENT2),
             ("Análisis",           "chart",   "analysis", (150, 150, 150)),
         ]
         return [(label, icon, action, color,

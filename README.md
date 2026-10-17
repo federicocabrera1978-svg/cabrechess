@@ -9,6 +9,10 @@ pip install -r requirements.txt
 python cabrechess.py
 ```
 
+Las piezas son el set **cburnett** de Lichess (Colin M.L. Burnett, GPLv2+),
+incluidas en `assets/pieces/cburnett/`.
+
+
 ## Descargar el ejecutable (Windows)
 
 Los `.exe` se publican en [Releases](../../releases), junto con un archivo `.sha256`
