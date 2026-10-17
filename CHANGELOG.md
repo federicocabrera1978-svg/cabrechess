@@ -13,6 +13,13 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
   guardar, menú, análisis, reloj, tablas y mate): ya no dependen de la fuente
   del sistema.
 
+### Cambiado
+- Peones rediseñados: ahora se dibujan en código (sin imágenes ni fuentes
+  externas) con cabeza, collar, cuerpo y base, contorno marcado, degradé de luz,
+  brillo y bordes suavizados (anti-aliasing). Se leen bien en casillas claras y
+  oscuras, tanto los blancos como los negros, y mantienen el mismo estilo al
+  arrastrarlos, en la animación y en el premove.
+
 ### Corregido
 - Los íconos 💾 (Guardar), ⬜/⬛ (Turno) y ⏱/⚖ (fin de partida) se veían como
   rectángulos vacíos.
