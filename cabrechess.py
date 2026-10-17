@@ -75,31 +75,52 @@ PIECE_UNICODE = {
     (chess.PAWN,   chess.BLACK): '♟',
 }
 
-# ─── PEONES DIBUJADOS EN CÓDIGO ─────────────────────────────────────────────────
-# El peón se dibuja con primitivas de pygame (sin imágenes ni fuentes externas):
+# ─── PIEZAS DIBUJADAS EN CÓDIGO ─────────────────────────────────────────────────
+# Cada pieza se dibuja con primitivas de pygame (sin imágenes ni fuentes externas):
 # se arma a 4x de resolución y se reduce con smoothscale para que los bordes
-# salgan suavizados (anti-aliasing). Cada parte (base, cuerpo, collar, cabeza)
-# lleva su propio contorno, así se ven las separaciones como en un set de torneo.
-PAWN_SUPERSAMPLE = 4
-PAWN_STYLE = {
+# salgan suavizados (anti-aliasing). Cada parte (base, cuerpo, collar, cabeza,
+# corona, etc.) lleva su propio contorno, así se ven las separaciones como en
+# un set de torneo. Estilo compartido: marfil (blancas) / grafito (negras),
+# degradé, brillo y sombra.
+PIECE_SUPERSAMPLE = 4
+PIECE_STYLE = {
     # color de pieza: (relleno claro, relleno oscuro, contorno, brillo)
     chess.WHITE: ((255, 255, 252), (206, 204, 196), (34, 32, 30), (255, 255, 255, 150)),
     chess.BLACK: ((92, 88, 84), (22, 21, 20), (8, 8, 8), (255, 255, 255, 70)),
 }
-_pawn_cache = {}
+_piece_cache = {}
+
+
+def _ellipse(ex, ey, rx, ry, start=0.0, end=2 * math.pi, n=64):
+    return [(ex + rx * math.cos(start + (end - start) * i / n),
+             ey + ry * math.sin(start + (end - start) * i / n))
+            for i in range(n + 1)]
+
+
+def _mirror(cx, pts):
+    return pts + [(2 * cx - x, y) for (x, y) in pts][::-1]
+
+
+def _profile(s, pts):
+    """Perfil simétrico: pts = [(yf, half_f), ...] de arriba hacia abajo."""
+    cx = s / 2
+    left = [(cx - hf * s, yf * s) for (yf, hf) in pts]
+    return _mirror(cx, left)
+
+
+def _base(s, w=0.275):
+    cx = s / 2
+    return (_ellipse(cx, 0.745 * s, w * s, 0.03 * s, math.pi, 2 * math.pi)
+            + _ellipse(cx, 0.815 * s, w * s, 0.035 * s, 0, math.pi))
+
+
+def _band(s, yc, half, ry=0.040):
+    return _ellipse(s / 2, yc * s, half * s, ry * s)
 
 
 def _pawn_parts(s):
-    """Devuelve las partes del peón como polígonos, en píxeles de un lienzo
-    de lado s (ordenadas de atrás hacia adelante)."""
+    """Partes del peón (base, cuerpo, collar, cabeza)."""
     cx = s / 2
-
-    def ellipse(ex, ey, rx, ry, start=0.0, end=2 * math.pi, n=64):
-        return [(ex + rx * math.cos(start + (end - start) * i / n),
-                 ey + ry * math.sin(start + (end - start) * i / n))
-                for i in range(n + 1)]
-
-    # Cuerpo: de un cuello angosto a una falda ancha, con lados cóncavos
     top_y, bot_y = 0.44 * s, 0.76 * s
     left, right = [], []
     for i in range(33):
@@ -108,28 +129,144 @@ def _pawn_parts(s):
         y = top_y + (bot_y - top_y) * t
         left.append((cx - half, y))
         right.append((cx + half, y))
-    body = left + ellipse(cx, bot_y, 0.243 * s, 0.035 * s, 0, math.pi)[::-1] + right[::-1]
-
-    # Base: zócalo ancho con frente redondeado
-    base_top, base_bot = 0.745 * s, 0.815 * s
-    base = (ellipse(cx, base_top, 0.275 * s, 0.03 * s, math.pi, 2 * math.pi)
-            + ellipse(cx, base_bot, 0.275 * s, 0.035 * s, 0, math.pi))
-    collar = ellipse(cx, 0.445 * s, 0.160 * s, 0.040 * s)
-    head = ellipse(cx, 0.300 * s, 0.128 * s, 0.128 * s)
-    return [base, body, collar, head]
+    body = left + _ellipse(cx, bot_y, 0.243 * s, 0.035 * s, 0, math.pi)[::-1] + right[::-1]
+    return [_base(s), body, _band(s, 0.445, 0.160),
+            _ellipse(cx, 0.300 * s, 0.128 * s, 0.128 * s)]
 
 
-def make_pawn_sprite(color, size):
-    """Superficie RGBA de size x size con el peón del color pedido (cacheada)."""
-    key = (color, size)
-    if key in _pawn_cache:
-        return _pawn_cache[key]
-    k = PAWN_SUPERSAMPLE
-    s = size * k
-    light, dark, outline, shine = PAWN_STYLE[color]
-    stroke = max(2, round(s * 0.022))
+def _king_parts(s):
+    cx = s / 2
+    body = _profile(s, [
+        (0.42, 0.095), (0.46, 0.088), (0.52, 0.132), (0.58, 0.112),
+        (0.66, 0.135), (0.71, 0.185), (0.748, 0.235),
+    ])
+    head = _profile(s, [
+        (0.235, 0.045), (0.255, 0.095), (0.295, 0.125), (0.345, 0.122),
+        (0.40, 0.100), (0.43, 0.078),
+    ])
+    cross_v = [
+        (cx - 0.027 * s, 0.050 * s), (cx + 0.027 * s, 0.050 * s),
+        (cx + 0.027 * s, 0.250 * s), (cx - 0.027 * s, 0.250 * s),
+    ]
+    cross_h = [
+        (cx - 0.082 * s, 0.100 * s), (cx + 0.082 * s, 0.100 * s),
+        (cx + 0.082 * s, 0.152 * s), (cx - 0.082 * s, 0.152 * s),
+    ]
+    return [_base(s, 0.285), body, _band(s, 0.425, 0.150), head, cross_v, cross_h]
 
-    # Degradé del relleno: luz desde arriba a la izquierda
+
+def _queen_parts(s):
+    cx = s / 2
+    body = _profile(s, [
+        (0.40, 0.100), (0.45, 0.090), (0.52, 0.130), (0.60, 0.110),
+        (0.67, 0.140), (0.71, 0.190), (0.748, 0.240),
+    ])
+    head = _profile(s, [
+        (0.305, 0.085), (0.325, 0.140), (0.355, 0.150), (0.39, 0.130),
+    ])
+    crownband = _profile(s, [(0.275, 0.150), (0.305, 0.150)])
+    parts = [_base(s, 0.285), body, _band(s, 0.405, 0.150), head, crownband]
+    offs = (-0.118, -0.059, 0.0, 0.059, 0.118)
+    for ox in offs:
+        tipx = cx + ox * s
+        parts.append([
+            (tipx - 0.030 * s, 0.278 * s),
+            (tipx + 0.030 * s, 0.278 * s),
+            (tipx, 0.205 * s),
+        ])
+    for ox in offs:
+        parts.append(_ellipse(cx + ox * s, 0.198 * s, 0.030 * s, 0.030 * s))
+    return parts
+
+
+def _rook_parts(s):
+    cx = s / 2
+    body = _profile(s, [
+        (0.47, 0.165), (0.51, 0.150), (0.60, 0.150), (0.66, 0.170),
+        (0.71, 0.205), (0.748, 0.250),
+    ])
+    left, right = cx - 0.205 * s, cx + 0.205 * s
+    merlon_top, gap_bot, block_bot = 0.345 * s, 0.395 * s, 0.475 * s
+    n_merlons = 4
+    seg = (right - left) / (2 * n_merlons - 1)
+    battlement = [(left, block_bot), (left, gap_bot)]
+    cur = left
+    for k in range(2 * n_merlons - 1):
+        top = merlon_top if k % 2 == 0 else gap_bot
+        battlement.append((cur, top))
+        battlement.append((cur + seg, top))
+        cur += seg
+    battlement.append((right, block_bot))
+    return [_base(s, 0.285), body, _band(s, 0.505, 0.175), battlement]
+
+
+def _bishop_parts(s):
+    cx = s / 2
+    body = _profile(s, [
+        (0.46, 0.085), (0.52, 0.112), (0.60, 0.118), (0.66, 0.150),
+        (0.71, 0.180), (0.748, 0.215),
+    ])
+    mitre = _profile(s, [
+        (0.175, 0.012), (0.21, 0.058), (0.27, 0.100), (0.33, 0.125),
+        (0.40, 0.112), (0.455, 0.078),
+    ])
+    ball = _ellipse(cx, 0.165 * s, 0.032 * s, 0.032 * s)
+    slit = [
+        (cx - 0.055 * s, 0.285 * s), (cx - 0.030 * s, 0.265 * s),
+        (cx + 0.060 * s, 0.360 * s), (cx + 0.035 * s, 0.380 * s),
+    ]
+    return [_base(s, 0.270), body, _band(s, 0.455, 0.135), mitre, ball,
+            ("outline", slit)]
+
+
+def _knight_parts(s):
+    neck = _profile(s, [
+        (0.58, 0.150), (0.64, 0.170), (0.71, 0.205), (0.748, 0.250),
+    ])
+    # Silueta del caballo mirando a la izquierda
+    pts = [
+        (0.315, 0.705), (0.30, 0.615), (0.285, 0.535), (0.255, 0.49),
+        (0.215, 0.465), (0.175, 0.455), (0.135, 0.455), (0.115, 0.425),
+        (0.115, 0.395), (0.145, 0.375), (0.135, 0.345), (0.175, 0.345),
+        (0.215, 0.335), (0.245, 0.305), (0.265, 0.27), (0.30, 0.235),
+        (0.345, 0.195), (0.375, 0.155), (0.405, 0.205), (0.435, 0.225),
+        (0.465, 0.175), (0.505, 0.205), (0.545, 0.27), (0.58, 0.355),
+        (0.61, 0.455), (0.63, 0.56), (0.64, 0.665), (0.59, 0.705),
+    ]
+    horse = [(x * s, y * s) for (x, y) in pts]
+    eye = _ellipse(0.315 * s, 0.295 * s, 0.019 * s, 0.019 * s)
+    nostril = _ellipse(0.155 * s, 0.405 * s, 0.013 * s, 0.013 * s)
+    return [_base(s, 0.285), neck, horse, ("outline", eye), ("outline", nostril)]
+
+
+_PIECE_PARTS = {
+    chess.PAWN: _pawn_parts,
+    chess.KING: _king_parts,
+    chess.QUEEN: _queen_parts,
+    chess.ROOK: _rook_parts,
+    chess.BISHOP: _bishop_parts,
+    chess.KNIGHT: _knight_parts,
+}
+
+_PIECE_SHINE = {
+    chess.PAWN: [(0.425, 0.225, 0.075, 0.05)],
+    chess.KING: [(0.40, 0.26, 0.07, 0.05)],
+    chess.QUEEN: [(0.40, 0.33, 0.07, 0.05)],
+    chess.ROOK: [(0.37, 0.40, 0.07, 0.05)],
+    chess.BISHOP: [(0.40, 0.27, 0.06, 0.05)],
+    chess.KNIGHT: [(0.33, 0.33, 0.06, 0.05)],
+}
+
+
+def make_piece_sprite(piece_type, color, size):
+    """Superficie RGBA de size x size con la pieza del color pedido (cacheada)."""
+    key = (piece_type, color, size)
+    if key in _piece_cache:
+        return _piece_cache[key]
+    s = size * PIECE_SUPERSAMPLE
+    light, dark, outline, shine = PIECE_STYLE[color]
+    stroke = max(2, round(s * 0.020))
+
     grad = pygame.Surface((s, s), pygame.SRCALPHA)
     for x in range(s):
         t = min(1.0, max(0.0, (x / s - 0.30) / 0.45))
@@ -137,13 +274,17 @@ def make_pawn_sprite(color, size):
         pygame.draw.line(grad, (*c, 255), (x, 0), (x, s))
 
     big = pygame.Surface((s, s), pygame.SRCALPHA)
-    for poly in _pawn_parts(s):
-        # Contorno: polígono relleno + borde grueso con puntas redondeadas
+    for part in _PIECE_PARTS[piece_type](s):
+        if isinstance(part, tuple) and part[0] == "outline":
+            poly = part[1]
+            pygame.draw.polygon(big, outline, poly)
+            pygame.draw.lines(big, outline, True, poly, stroke)
+            continue
+        poly = part
         pygame.draw.polygon(big, outline, poly)
         pygame.draw.lines(big, outline, True, poly, stroke * 2)
         for p in poly[::4]:
             pygame.draw.circle(big, outline, p, stroke)
-        # Relleno con degradé recortado a la forma (sin el borde)
         mask = pygame.Surface((s, s), pygame.SRCALPHA)
         pygame.draw.polygon(mask, (255, 255, 255, 255), poly)
         pygame.draw.lines(mask, (0, 0, 0, 0), True, poly, stroke * 2)
@@ -151,26 +292,36 @@ def make_pawn_sprite(color, size):
         fill.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
         big.blit(fill, (0, 0))
 
-    # Brillo en la cabeza
     hl = pygame.Surface((s, s), pygame.SRCALPHA)
-    pygame.draw.ellipse(hl, shine, pygame.Rect(0.425 * s, 0.225 * s, 0.075 * s, 0.05 * s))
+    for (hx, hy, hrx, hry) in _PIECE_SHINE.get(piece_type, []):
+        pygame.draw.ellipse(hl, shine, pygame.Rect(hx * s, hy * s, hrx * s, hry * s))
     big.blit(hl, (0, 0))
 
     sprite = pygame.transform.smoothscale(big, (size, size))
-    _pawn_cache[key] = sprite
+    _piece_cache[key] = sprite
     return sprite
 
 
-def make_pawn_shadow(size, alpha=110):
-    """Sombra suave del peón (silueta negra semitransparente)."""
-    key = ("shadow", size, alpha)
-    if key in _pawn_cache:
-        return _pawn_cache[key]
-    shadow = make_pawn_sprite(chess.WHITE, size).copy()
+def make_piece_shadow(piece_type, size, alpha=110):
+    """Sombra suave de la pieza (silueta negra semitransparente)."""
+    key = ("shadow", piece_type, size, alpha)
+    if key in _piece_cache:
+        return _piece_cache[key]
+    shadow = make_piece_sprite(piece_type, chess.WHITE, size).copy()
     shadow.fill((0, 0, 0, 255), special_flags=pygame.BLEND_RGBA_MIN)
     shadow.fill((255, 255, 255, alpha), special_flags=pygame.BLEND_RGBA_MULT)
-    _pawn_cache[key] = shadow
+    _piece_cache[key] = shadow
     return shadow
+
+
+def make_pawn_sprite(color, size):
+    """Compat: peón del color pedido."""
+    return make_piece_sprite(chess.PAWN, color, size)
+
+
+def make_pawn_shadow(size, alpha=110):
+    """Compat: sombra del peón."""
+    return make_piece_shadow(chess.PAWN, size, alpha)
 
 
 PIECE_NAMES = {
@@ -696,9 +847,7 @@ class CabreChess:
         if self.mode == "vsai":
             if color == self.ai_color:
                 name = "CabreChess AI"
-        sym = '♚' if color == chess.BLACK else '♔'
-        c = (200, 200, 200) if color == chess.BLACK else (255, 255, 255)
-        sym_surf = self.font_piece_sm.render(sym, True, c)
+        sym_surf = make_piece_sprite(chess.KING, color, 22)
         name_surf = self.font_small.render(name, True, TEXT_COLOR)
         turn_indicator = color == self.board.turn and not self.game_over
         if turn_indicator:
@@ -748,10 +897,10 @@ class CabreChess:
 
     def draw_captured(self, color, x, y):
         caps = self.captured_black if color == chess.BLACK else self.captured_white
+        size = 18
         for i, p in enumerate(caps[:16]):
-            sym = PIECE_UNICODE.get((p.piece_type, p.color), '?')
-            s = self.font_piece_xs.render(sym, True, TEXT_DIM)
-            self.screen.blit(s, (x + i*14, y))
+            spr = make_piece_sprite(p.piece_type, p.color, size)
+            self.screen.blit(spr, (x + i * 14, y - 2))
 
     def draw_highlights(self):
         surf = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
@@ -855,49 +1004,24 @@ class CabreChess:
         sq = self.premove_to
         piece = self.premove_piece
         x, y = self.sq_to_pixel(sq)
-        sym = PIECE_UNICODE.get((piece.piece_type, piece.color), '?')
-        color = (255, 255, 255, 140) if piece.color == chess.WHITE else (30, 30, 30, 140)
         ghost = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
-        if piece.piece_type == chess.PAWN:
-            p_surf = make_pawn_sprite(piece.color, SQUARE_SIZE).copy()
-            p_surf.fill((255, 255, 255, 150), special_flags=pygame.BLEND_RGBA_MULT)
-            ghost.blit(p_surf, (0, 0))
-            self.screen.blit(ghost, (x, y))
-            return
-        p_surf = self.font_piece.render(sym, True, color[:3])
-        p_surf.set_alpha(150)
+        p_surf = make_piece_sprite(piece.piece_type, piece.color, SQUARE_SIZE).copy()
+        p_surf.fill((255, 255, 255, 150), special_flags=pygame.BLEND_RGBA_MULT)
         ghost.blit(p_surf, (0, 0))
         self.screen.blit(ghost, (x, y))
 
     def draw_piece_at_sq(self, piece, sq):
         x, y = self.sq_to_pixel(sq)
-        if piece.piece_type == chess.PAWN:
-            self.screen.blit(make_pawn_shadow(SQUARE_SIZE), (x + 2, y + 2))
-            self.screen.blit(make_pawn_sprite(piece.color, SQUARE_SIZE), (x, y))
-            return
-        sym = PIECE_UNICODE.get((piece.piece_type, piece.color), '?')
-        # Sombra
-        shadow = self.font_piece.render(sym, True, (0, 0, 0))
-        self.screen.blit(shadow, (x + 2, y + 2))
-        color = TEXT_BRIGHT if piece.color == chess.WHITE else (30, 30, 30)
-        surf = self.font_piece.render(sym, True, color)
-        self.screen.blit(surf, (x, y))
+        self.screen.blit(make_piece_shadow(piece.piece_type, SQUARE_SIZE), (x + 2, y + 2))
+        self.screen.blit(make_piece_sprite(piece.piece_type, piece.color, SQUARE_SIZE), (x, y))
 
     def draw_dragged_piece(self):
-        if self.drag_piece.piece_type == chess.PAWN:
-            x = self.drag_pos[0] - SQUARE_SIZE//2
-            y = self.drag_pos[1] - SQUARE_SIZE//2
-            self.screen.blit(make_pawn_shadow(SQUARE_SIZE, 80), (x + 4, y + 4))
-            self.screen.blit(make_pawn_sprite(self.drag_piece.color, SQUARE_SIZE), (x, y))
-            return
-        sym = PIECE_UNICODE.get((self.drag_piece.piece_type, self.drag_piece.color), '?')
-        shadow = self.font_piece.render(sym, True, (0, 0, 0, 100))
-        self.screen.blit(shadow, (self.drag_pos[0] - SQUARE_SIZE//2 + 4,
-                                   self.drag_pos[1] - SQUARE_SIZE//2 + 4))
-        color = TEXT_BRIGHT if self.drag_piece.color == chess.WHITE else (30, 30, 30)
-        surf = self.font_piece.render(sym, True, color)
-        self.screen.blit(surf, (self.drag_pos[0] - SQUARE_SIZE//2,
-                                 self.drag_pos[1] - SQUARE_SIZE//2))
+        x = self.drag_pos[0] - SQUARE_SIZE // 2
+        y = self.drag_pos[1] - SQUARE_SIZE // 2
+        self.screen.blit(make_piece_shadow(self.drag_piece.piece_type, SQUARE_SIZE, 80),
+                         (x + 4, y + 4))
+        self.screen.blit(make_piece_sprite(self.drag_piece.piece_type, self.drag_piece.color,
+                                           SQUARE_SIZE), (x, y))
 
     def draw_animation(self):
         t = (time.time() - self.anim_start) / self.anim_duration
@@ -906,17 +1030,14 @@ class CabreChess:
             return
         # Interpolación suave
         t = t * t * (3 - 2 * t)  # smoothstep
-        if self.anim_from_pos and self.anim_to_pos:
+        if self.anim_from_pos and self.anim_to_pos and self.anim_piece:
             x = self.anim_from_pos[0] + (self.anim_to_pos[0] - self.anim_from_pos[0]) * t
             y = self.anim_from_pos[1] + (self.anim_to_pos[1] - self.anim_from_pos[1]) * t
-            if self.anim_piece and self.anim_piece.piece_type == chess.PAWN:
-                self.screen.blit(make_pawn_sprite(self.anim_piece.color, SQUARE_SIZE),
-                                 (int(x), int(y)))
-            elif self.anim_piece:
-                sym = PIECE_UNICODE.get((self.anim_piece.piece_type, self.anim_piece.color), '?')
-                color = TEXT_BRIGHT if self.anim_piece.color == chess.WHITE else (30, 30, 30)
-                surf = self.font_piece.render(sym, True, color)
-                self.screen.blit(surf, (int(x), int(y)))
+            self.screen.blit(
+                make_piece_sprite(self.anim_piece.piece_type, self.anim_piece.color,
+                                  SQUARE_SIZE),
+                (int(x), int(y)),
+            )
 
     def draw_promotion_menu(self):
         overlay = pygame.Surface((WINDOW_W, WINDOW_H), pygame.SRCALPHA)
@@ -945,12 +1066,11 @@ class CabreChess:
             hovered = brect.collidepoint(mx, my)
             bg = ACCENT if hovered else (50, 49, 46)
             pygame.draw.rect(self.screen, bg, brect, border_radius=8)
-            sym = PIECE_UNICODE.get((pt, color), '?')
             tc = BG_COLOR if hovered else TEXT_BRIGHT
-            p_surf = self.font_piece_sm.render(sym, True, tc)
+            p_surf = make_piece_sprite(pt, color, 36)
             n_surf = self.font_med.render(PIECE_NAMES[pt], True, tc)
-            self.screen.blit(p_surf, (bx + 15, by + ph//2 - p_surf.get_height()//2 - 4))
-            self.screen.blit(n_surf, (bx + 55, by + ph//2 - n_surf.get_height()//2 - 4))
+            self.screen.blit(p_surf, (bx + 10, by + ph // 2 - 18 - 2))
+            self.screen.blit(n_surf, (bx + 55, by + ph // 2 - n_surf.get_height() // 2 - 4))
 
     def draw_side_panel(self):
         # Panel de movimientos

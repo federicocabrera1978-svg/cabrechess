@@ -19,6 +19,11 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
   brillo y bordes suavizados (anti-aliasing). Se leen bien en casillas claras y
   oscuras, tanto los blancos como los negros, y mantienen el mismo estilo al
   arrastrarlos, en la animación y en el premove.
+- Rey, dama, torre, alfil y caballo con el mismo estilo dibujado en código
+  (contorno, degradé marfil/grafito, brillo y sombra). Se usan en el tablero,
+  al arrastrar, en la animación, en el fantasma del premove, en la franja de
+  capturadas, en el menú de promoción y en los paneles de jugador. Sin imágenes
+  ni fuentes externas; licencia limpia (GPL-3.0).
 
 ### Corregido
 - Los íconos 💾 (Guardar), ⬜/⬛ (Turno) y ⏱/⚖ (fin de partida) se veían como
