@@ -522,6 +522,10 @@ class CabreChess:
         self.captured_white = []
         self.captured_black = []
 
+        # Deshacer: una "foto" del estado extra (relojes, capturas, evaluación)
+        # por cada jugada, para poder restaurarlo exacto con Ctrl+Z.
+        self.undo_stack = []
+
         # Tiempos
         self.time_options = [60, 180, 300, 600]   # 1/3/5/10 min en segundos
         self.time_selected = 180                   # 3 min por defecto
@@ -1365,7 +1369,27 @@ class CabreChess:
 
         self.execute_move(move)
 
+    def snapshot_state(self):
+        """Foto del estado que python-chess no guarda en el tablero."""
+        return {
+            "time_white": self.time_white,
+            "time_black": self.time_black,
+            "captured_white": list(self.captured_white),
+            "captured_black": list(self.captured_black),
+            "eval_score": self.eval_score,
+            "eval_history_len": len(self.eval_history),
+        }
+
+    def restore_state(self, snap):
+        self.time_white = snap["time_white"]
+        self.time_black = snap["time_black"]
+        self.captured_white = list(snap["captured_white"])
+        self.captured_black = list(snap["captured_black"])
+        self.eval_score = snap["eval_score"]
+        del self.eval_history[snap["eval_history_len"]:]
+
     def execute_move(self, move):
+        self.undo_stack.append(self.snapshot_state())
         # Guardar pieza para animación
         piece = self.board.piece_at(move.from_square)
         captured = self.board.piece_at(move.to_square)
@@ -1389,12 +1413,13 @@ class CabreChess:
         self.move_history.append(move.uci())
         self.move_history_san.append(san)
 
-        # Aplicar incremento al jugador que acaba de mover
-        if self.use_timer and len(self.move_history) > 1:
+        # Incremento Fischer: se suma en TODAS las jugadas (también la
+        # primera) y sin tope, como en Lichess/FIDE.
+        if self.use_timer:
             if mover_color == chess.WHITE:
-                self.time_white = min(self.time_white + self.time_increment, self.time_selected + 60)
+                self.time_white += self.time_increment
             else:
-                self.time_black = min(self.time_black + self.time_increment, self.time_selected + 60)
+                self.time_black += self.time_increment
 
         self.selected_sq = None
         self.legal_moves_from = []
@@ -1404,7 +1429,7 @@ class CabreChess:
             self.spawn_particles(move.to_square, (220, 100, 50))
         elif self.board.is_check():
             king_sq = self.board.king(self.board.turn)
-            if king_sq:
+            if king_sq is not None:     # a1 es la casilla 0
                 self.spawn_particles(king_sq, (220, 50, 50))
 
         # Verificar fin
@@ -1505,6 +1530,7 @@ class CabreChess:
         self.ai_search_id += 1
         self.captured_white = []
         self.captured_black = []
+        self.undo_stack = []
         self.particles = []
         self.anim_move = None
         self.dragging = False
@@ -1520,25 +1546,49 @@ class CabreChess:
         self.maybe_start_ai()
 
     def undo_move(self):
-        if self.board.move_stack and not self.ai_thinking:
-            self.board.pop()
-            if self.move_history:
-                self.move_history.pop()
-            if self.move_history_san:
-                self.move_history_san.pop()
-            # En modo IA, deshacer 2 movimientos
-            if self.mode == "vsai" and self.board.move_stack:
-                self.board.pop()
-                if self.move_history:
-                    self.move_history.pop()
-                if self.move_history_san:
-                    self.move_history_san.pop()
-            self.selected_sq = None
-            self.legal_moves_from = []
-            self.last_move = self.board.peek() if self.board.move_stack else None
-            self.game_over = False
-            self.ai_thinking = False
-            self.maybe_start_ai()   # si quedó el turno de la IA (jugando con negras)
+        """Deshace la última jugada y restaura todo el estado: relojes,
+        piezas capturadas, evaluación, historial y premoves.
+        En vs IA vuelve hasta que le toque al jugador (normalmente 2 jugadas).
+        Si la IA está pensando, cancela la búsqueda y deshace la jugada
+        del jugador."""
+        if not self.board.move_stack:
+            return
+        # Cancelar una búsqueda en curso: su resultado se descarta
+        self.ai_search_id += 1
+        self.ai_thinking = False
+        self.ai_thread = None
+        self.ai_move_ready = False
+        self.ai_result_move = None
+
+        self._undo_one()
+        if self.mode == "vsai":
+            while self.board.move_stack and self.board.turn == self.ai_color:
+                self._undo_one()
+
+        self.selected_sq = None
+        self.legal_moves_from = []
+        self.last_move = self.board.peek() if self.board.move_stack else None
+        self.clear_premove()
+        self.promotion_pending = None
+        self.dragging = False
+        self.drag_piece = None
+        self.anim_move = None
+        self.particles = []
+        self.game_over = False
+        self.game_over_msg = ""
+        self.time_last = time.time()
+        if self.mode == "analysis":
+            self.update_eval()
+        self.maybe_start_ai()   # si quedó el turno de la IA (jugando con negras)
+
+    def _undo_one(self):
+        self.board.pop()
+        if self.move_history:
+            self.move_history.pop()
+        if self.move_history_san:
+            self.move_history_san.pop()
+        if self.undo_stack:
+            self.restore_state(self.undo_stack.pop())
 
     def clear_premove(self):
         self.premove_from = None
@@ -1963,6 +2013,17 @@ class CabreChess:
         # reset_game() también lanza la IA si arranca ella (jugador con negras)
         self.reset_game()
 
+    def flag_fall(self, color):
+        """Al bando `color` se le acabó el tiempo. Si el rival no tiene
+        material para dar mate de ninguna forma, es tablas (regla FIDE 6.9)."""
+        self.game_over = True
+        rival = not color
+        if self.board.has_insufficient_material(rival):
+            self.game_over_msg = "clock\nTiempo agotado\nTablas (sin material para ganar)"
+        else:
+            winner = "Blancas" if rival == chess.WHITE else "Negras"
+            self.game_over_msg = f"clock\nTiempo agotado\n{winner} ganan"
+
     # ─── LOOP PRINCIPAL ─────────────────────────────────────────────────────────
     def update(self):
         now = time.time()
@@ -1976,13 +2037,11 @@ class CabreChess:
             if self.board.turn == chess.WHITE:
                 self.time_white = max(0, self.time_white - dt)
                 if self.time_white == 0:
-                    self.game_over = True
-                    self.game_over_msg = "clock\nTiempo agotado\nNegras ganan"
+                    self.flag_fall(chess.WHITE)
             else:
                 self.time_black = max(0, self.time_black - dt)
                 if self.time_black == 0:
-                    self.game_over = True
-                    self.game_over_msg = "clock\nTiempo agotado\nBlancas ganan"
+                    self.flag_fall(chess.BLACK)
         self.time_last = now
 
         # IA — el cálculo corre en un hilo aparte (start_ai_search); acá solo
