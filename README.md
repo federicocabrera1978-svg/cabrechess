@@ -12,6 +12,15 @@ python cabrechess.py
 Las piezas son el set **cburnett** de Lichess (Colin M.L. Burnett, GPLv2+),
 incluidas en `assets/pieces/cburnett/`.
 
+## Tests
+
+Los tests usan `pytest` y corren sin pantalla (pygame en modo `dummy`):
+
+```
+pip install -r requirements.txt pytest
+python -m pytest
+```
+
 
 ## Descargar el ejecutable (Windows)
 
