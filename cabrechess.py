@@ -305,6 +305,19 @@ def _assets_root():
 
 
 _ASSETS_DIR = _assets_root()
+_LOGO_DIR = _ASSETS_DIR.parent.parent / "logo"
+
+
+def load_window_icon():
+    """Superficie con el ícono de CabreChess, o None si no está el archivo."""
+    for name in ("cabrechess_64.png", "cabrechess.png"):
+        path = _LOGO_DIR / name
+        if path.is_file():
+            try:
+                return pygame.image.load(str(path))
+            except pygame.error:
+                continue
+    return None
 _CBURNETT_FILE = {
     (chess.KING,   chess.WHITE): "wK.png",
     (chess.QUEEN,  chess.WHITE): "wQ.png",
@@ -471,6 +484,11 @@ class CabreChess:
     def __init__(self):
         pygame.init()
         pygame.display.set_caption("CabreChess")
+        # El ícono va antes de set_mode para que lo tome la ventana y la barra
+        # de tareas (en Windows/Linux no se actualiza bien si se pone después).
+        icon = load_window_icon()
+        if icon is not None:
+            pygame.display.set_icon(icon)
         self.screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
         self.clock = pygame.time.Clock()
 
