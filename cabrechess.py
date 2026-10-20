@@ -13,9 +13,7 @@ the Free Software Foundation, either version 3 of the License, or
 
 import pygame
 import chess
-import chess.engine
 import sys
-import os
 import time
 import math
 import random
@@ -398,7 +396,8 @@ PIECE_NAMES = {
 
 # ─── MOTOR DE AJEDREZ (STOCKFISH O MINIMAX) ────────────────────────────────────
 class SimpleEngine:
-    """Motor minimax simple cuando Stockfish no está disponible."""
+    """Motor propio: minimax con poda alfa-beta y tablas pieza-casilla.
+    No usa Stockfish ni ningún motor externo."""
     PIECE_VALUES = {
         chess.PAWN: 100, chess.KNIGHT: 320, chess.BISHOP: 330,
         chess.ROOK: 500, chess.QUEEN: 900, chess.KING: 20000,
@@ -527,6 +526,9 @@ class CabreChess:
         self.ai_move_ready = False
         self.ai_result_move = None
         self.ai_search_id = 0          # descarta resultados de búsquedas viejas
+        # Protege ai_search_id / ai_result_move / ai_move_ready entre el hilo
+        # de la IA y el loop principal
+        self.ai_lock = threading.Lock()
 
         # Animación
         self.anim_move = None
@@ -585,14 +587,9 @@ class CabreChess:
     def load_fonts(self):
         # Usamos fuentes del sistema, priorizando las más bonitas
         candidates = ["DejaVu Sans", "Liberation Sans", "Ubuntu", "FreeSans", "Arial"]
-        font_name = None
-        for c in candidates:
-            try:
-                pygame.font.SysFont(c, 12)
-                font_name = c
-                break
-            except:
-                pass
+        # SysFont no falla si la fuente no existe (cae en silencio a la
+        # default), así que verificamos con match_font si está instalada.
+        font_name = next((c for c in candidates if pygame.font.match_font(c)), None)
 
         self.font_tiny   = pygame.font.SysFont(font_name, 12)
         self.font_coord  = pygame.font.SysFont(font_name, 13, bold=True)
@@ -634,7 +631,7 @@ class CabreChess:
                 metrics = pygame.freetype.Font(path, 32).get_metrics('♔')
                 if metrics and metrics[0] is not None:
                     return path
-            except Exception:
+            except (OSError, pygame.error):
                 continue
         return None
 
@@ -758,7 +755,7 @@ class CabreChess:
 
         # Botones
         mx, my = pygame.mouse.get_pos()
-        for label, icon, action, color, rect in self.menu_main_buttons():
+        for label, icon, _action, color, rect in self.menu_main_buttons():
             hovered = rect.collidepoint(mx, my)
             bg = (45, 44, 41) if hovered else (35, 34, 31)
             pygame.draw.rect(self.screen, bg, rect, border_radius=8)
@@ -983,8 +980,6 @@ class CabreChess:
             self.screen.blit(spr, (x + i * 14, y - 2))
 
     def draw_highlights(self):
-        surf = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
-
         # Último movimiento
         if self.last_move:
             for sq in [self.last_move.from_square, self.last_move.to_square]:
@@ -1017,7 +1012,6 @@ class CabreChess:
         for move in self.legal_moves_from:
             sq = move.to_square
             x, y = self.sq_to_pixel(sq)
-            cx, cy = x + SQUARE_SIZE//2, y + SQUARE_SIZE//2
             dot_surf = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
             if self.board.piece_at(sq):
                 # Captura: ring
@@ -1166,7 +1160,6 @@ class CabreChess:
         clip_rect = pygame.Rect(PANEL_X + 5, BOARD_Y + 30, PANEL_W - 20, BOARD_SIZE - 80)
         self.screen.set_clip(clip_rect)
 
-        moves_per_row = 2
         row_h = 24
         visible_rows = (clip_rect.height) // row_h
         total_rows = (len(self.move_history_san) + 1) // 2 + 1
@@ -1285,7 +1278,7 @@ class CabreChess:
             self.screen.blit(sub_surf, (WINDOW_W//2 - sub_surf.get_width()//2, py + 115))
 
         mx, my = pygame.mouse.get_pos()
-        for i, (label, action) in enumerate([("Nueva Partida", self.reset_game), ("Menú", self.go_menu)]):
+        for i, (label, _action) in enumerate([("Nueva Partida", self.reset_game), ("Menú", self.go_menu)]):
             bx, by = WINDOW_W//2 - 180 + i*190, py + 160
             brect = pygame.Rect(bx, by, 170, 44)
             hov = brect.collidepoint(mx, my)
@@ -1489,20 +1482,22 @@ class CabreChess:
     def start_ai_search(self):
         """Lanza el cálculo del movimiento de la IA en un hilo aparte
         para no bloquear el loop principal (dibujo/eventos) durante la búsqueda."""
-        self.ai_move_ready = False
-        self.ai_result_move = None
         board_copy = self.board.copy()
         depth = self.ai_depth
-        self.ai_search_id += 1
-        search_id = self.ai_search_id
+        with self.ai_lock:
+            self.ai_move_ready = False
+            self.ai_result_move = None
+            self.ai_search_id += 1
+            search_id = self.ai_search_id
 
         def worker():
             move = self.engine.get_best_move(board_copy, depth=depth)
-            # Si la partida se reinició/deshizo mientras pensaba, descartar
-            if search_id != self.ai_search_id:
-                return
-            self.ai_result_move = move
-            self.ai_move_ready = True
+            with self.ai_lock:
+                # Si la partida se reinició/deshizo mientras pensaba, descartar
+                if search_id != self.ai_search_id:
+                    return
+                self.ai_result_move = move
+                self.ai_move_ready = True
 
         self.ai_thread = threading.Thread(target=worker, daemon=True)
         self.ai_thread.start()
@@ -1516,11 +1511,21 @@ class CabreChess:
             self.ai_think_start = time.time()
             self.start_ai_search()
 
-    def ai_move(self):
-        move = self.ai_result_move
+    def cancel_ai_search(self):
+        """Invalida cualquier búsqueda en curso: su resultado se descarta."""
+        with self.ai_lock:
+            self.ai_search_id += 1
+            self.ai_move_ready = False
+            self.ai_result_move = None
+        self.ai_thinking = False
         self.ai_thread = None
-        self.ai_move_ready = False
-        self.ai_result_move = None
+
+    def ai_move(self):
+        with self.ai_lock:
+            move = self.ai_result_move
+            self.ai_move_ready = False
+            self.ai_result_move = None
+        self.ai_thread = None
         self.ai_thinking = False
         if self.game_over:      # p.ej. a la IA se le cayó la bandera
             return
@@ -1541,11 +1546,7 @@ class CabreChess:
         self.promotion_pending = None
         self.game_over = False
         self.game_over_msg = ""
-        self.ai_thinking = False
-        self.ai_thread = None
-        self.ai_move_ready = False
-        self.ai_result_move = None
-        self.ai_search_id += 1
+        self.cancel_ai_search()
         self.captured_white = []
         self.captured_black = []
         self.undo_stack = []
@@ -1572,11 +1573,7 @@ class CabreChess:
         if not self.board.move_stack:
             return
         # Cancelar una búsqueda en curso: su resultado se descarta
-        self.ai_search_id += 1
-        self.ai_thinking = False
-        self.ai_thread = None
-        self.ai_move_ready = False
-        self.ai_result_move = None
+        self.cancel_ai_search()
 
         self._undo_one()
         if self.mode == "vsai":
@@ -1684,18 +1681,45 @@ class CabreChess:
         self.screen.blit(lbl, (gx + 2, gy - 12))
 
     def save_pgn(self):
-        """Guarda la partida actual en formato PGN."""
-        import datetime, tkinter, tkinter.filedialog, tkinter.messagebox
+        """Guarda la partida actual en formato PGN (con diálogo de archivo)."""
+        import tkinter
+        import tkinter.filedialog
+        import tkinter.messagebox
         if not self.move_history_san:
             try:
-                root = tkinter.Tk(); root.withdraw()
+                root = tkinter.Tk()
+                root.withdraw()
                 tkinter.messagebox.showinfo("CabreChess", "No hay movimientos para guardar.")
                 root.destroy()
-            except:
+            except tkinter.TclError:
+                # Sin display / Tk no disponible: no hay a quién avisar
                 pass
             return
 
-        # Construir PGN
+        pgn_text, date_str = self.build_pgn()
+
+        try:
+            root = tkinter.Tk()
+            root.withdraw()
+            root.lift()
+            filename = tkinter.filedialog.asksaveasfilename(
+                defaultextension=".pgn",
+                filetypes=[("PGN files", "*.pgn"), ("All files", "*.*")],
+                initialfile=f"CabreChess_{date_str.replace('.','')}.pgn",
+                title="Guardar partida PGN",
+            )
+            root.destroy()
+            if filename:
+                with open(filename, "w", encoding="utf-8") as f:
+                    f.write(pgn_text)
+                self.pgn_saved_msg = f"Guardado: {Path(filename).name}"
+                self.pgn_saved_time = time.time()
+        except (tkinter.TclError, OSError) as e:
+            print(f"Error guardando PGN: {e}")
+
+    def build_pgn(self):
+        """Arma el texto PGN de la partida actual. Devuelve (pgn_text, date_str)."""
+        import datetime
         now = datetime.datetime.now()
         date_str = now.strftime("%Y.%m.%d")
         mode_tag = {"pvp": "PvP", "vsai": "vs IA", "analysis": "Análisis"}.get(self.mode, "?")
@@ -1716,7 +1740,7 @@ class CabreChess:
 
         lines = [
             f'[Event "CabreChess — {mode_tag}"]',
-            f'[Site "CabreChess by Federico Cabrera"]',
+            '[Site "CabreChess by Federico Cabrera"]',
             f'[Date "{date_str}"]',
             f'[White "{white_name}"]',
             f'[Black "{black_name}"]',
@@ -1744,37 +1768,14 @@ class CabreChess:
             pgn_moves.append(line.rstrip())
         lines += pgn_moves
 
-        pgn_text = "\n".join(lines) + "\n"
-
-        # Guardar con diálogo de archivo
-        try:
-            root = tkinter.Tk()
-            root.withdraw()
-            root.lift()
-            filename = tkinter.filedialog.asksaveasfilename(
-                defaultextension=".pgn",
-                filetypes=[("PGN files", "*.pgn"), ("All files", "*.*")],
-                initialfile=f"CabreChess_{date_str.replace('.','')}.pgn",
-                title="Guardar partida PGN",
-            )
-            root.destroy()
-            if filename:
-                with open(filename, "w", encoding="utf-8") as f:
-                    f.write(pgn_text)
-                self.pgn_saved_msg = f"Guardado: {filename.split('/')[-1].split(chr(92))[-1]}"
-                self.pgn_saved_time = time.time()
-        except Exception as e:
-            print(f"Error guardando PGN: {e}")
+        return "\n".join(lines) + "\n", date_str
 
     def update_eval(self):
         """Calcula evaluación estática para la posición actual."""
         if self.mode != "analysis":
             return
-        raw = self.engine.evaluate(self.board)
-        # Suavizar un poco para que no salte bruscamente
-        self.eval_score = raw * 0.01  # convertir a centipawns display
-        # En realidad evaluate() ya devuelve en centipawns, ajustar
-        self.eval_score = raw
+        # evaluate() ya devuelve centipawns desde el punto de vista de blancas
+        self.eval_score = self.engine.evaluate(self.board)
 
     def flip_board(self):
         self.flipped = not self.flipped
@@ -1988,10 +1989,9 @@ class CabreChess:
 
     def handle_game_over_click(self, pos):
         mx, my = pos
-        pw, ph = 440, 240
-        px = WINDOW_W//2 - pw//2
+        ph = 240
         py = WINDOW_H//2 - ph//2
-        for i, (label, action) in enumerate([("Nueva Partida", self.reset_game), ("Menú", self.go_menu)]):
+        for i, (_label, action) in enumerate([("Nueva Partida", self.reset_game), ("Menú", self.go_menu)]):
             bx, by = WINDOW_W//2 - 180 + i*190, py + 160
             brect = pygame.Rect(bx, by, 170, 44)
             if brect.collidepoint(mx, my):
@@ -2080,6 +2080,10 @@ class CabreChess:
 
 
 # ─── ENTRY POINT ────────────────────────────────────────────────────────────────
+def main():
+    """Punto de entrada (también usado por el script `cabrechess` de pyproject)."""
+    CabreChess().run()
+
+
 if __name__ == "__main__":
-    game = CabreChess()
-    game.run()
+    main()
