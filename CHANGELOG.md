@@ -15,6 +15,11 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 - Set de piezas **cburnett** (Lichess / Colin M.L. Burnett, GPLv2+): 12 PNG
   en `assets/pieces/cburnett/` (convertidos desde los SVG oficiales). Créditos
   y licencia en `assets/pieces/cburnett/LICENSE`.
+- **Logo e ícono de CabreChess** (caballo cburnett sobre casillas en los tonos
+  de Lichess) en `assets/logo/`: ícono de la ventana, ícono del `.exe` (`.ico`
+  de 16 a 256 px) y banner del README. Se regeneran con `tools/make_logo.py`.
+- Metadatos de versión del `.exe` de Windows (`version_info.txt`): nombre,
+  descripción, versión y licencia en Propiedades > Detalles.
 - Primeros tests automáticos con `pytest` en `tests/` (reloj y deshacer),
   que corren sin pantalla.
 
@@ -29,6 +34,9 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
   primera, y ya no tiene el tope de "tiempo inicial + 60 s".
 
 ### Corregido
+- El workflow de release compilaba con `pyinstaller cabrechess.py` y dejaba
+  afuera la carpeta `assets/`: el `.exe` publicado no traía las piezas
+  cburnett. Ahora compila con `CabreChess.spec`.
 - Los íconos 💾 (Guardar), ⬜/⬛ (Turno) y ⏱/⚖ (fin de partida) se veían como
   rectángulos vacíos.
 - Las letras de columna a–h no se veían: se dibujaban con el mismo color que la

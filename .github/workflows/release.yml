@@ -22,7 +22,8 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Build executable
-        run: pyinstaller --onefile --windowed --name CabreChess cabrechess.py
+        # El spec incluye assets/ (piezas y logo), el ícono y los metadatos de versión
+        run: pyinstaller CabreChess.spec
 
       # Uncomment once the project is approved by SignPath Foundation
       # (https://signpath.org/) and the SIGNPATH_API_TOKEN secret,

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo/banner.png" alt="CabreChess" width="520">
+</p>
+
 # CabreChess
 
 Un juego de ajedrez funcional inspirado en Lichess, hecho con `pygame` y `python-chess`.
@@ -10,7 +14,8 @@ python cabrechess.py
 ```
 
 Las piezas son el set **cburnett** de Lichess (Colin M.L. Burnett, GPLv2+),
-incluidas en `assets/pieces/cburnett/`.
+incluidas en `assets/pieces/cburnett/`. El logo (`assets/logo/`) usa el caballo
+de ese mismo set.
 
 ## Tests
 
@@ -52,8 +57,12 @@ para el detalle de procedencia, roles y estado.
 
 ```
 pip install -r requirements.txt
-pyinstaller --onefile --windowed --name CabreChess cabrechess.py
+pyinstaller CabreChess.spec
 ```
+
+El spec empaqueta `assets/` (piezas y logo), usa `assets/logo/cabrechess.ico`
+como ícono del `.exe` y toma los metadatos de versión de `version_info.txt`.
+El logo se regenera con `python tools/make_logo.py` (necesita Pillow).
 
 ## Licencia
 
