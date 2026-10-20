@@ -6,6 +6,25 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Pulido para portfolio
+- README reescrito: funcionalidades, controles, requisitos, badges, capturas y
+  sección en inglés. Capturas de desarrollo movidas a `docs/screenshots/dev/`.
+- CI (`.github/workflows/ci.yml`): ruff + pytest en Ubuntu y Windows.
+- `pyproject.toml` con el comando `cabrechess` y configuración de ruff;
+  `requirements-dev.txt` separado (pyinstaller, pytest, ruff).
+- Tests nuevos: el motor encuentra mates en 1, nunca devuelve jugadas ilegales,
+  y el PGN exportado se vuelve a leer con `chess.pgn`.
+- `.github/FUNDING.yml` como plantilla comentada.
+
+### Corregido
+- Elección de fuente: `SysFont` nunca falla, así que ahora se verifica con
+  `match_font` que la fuente esté instalada.
+- Acceso al resultado de la IA protegido con un lock entre el hilo de búsqueda
+  y el loop principal (`cancel_ai_search`).
+- `except:` pelados reemplazados por excepciones concretas.
+- Docstring de `SimpleEngine` que mencionaba Stockfish (no se usa).
+- Imports y variables sin usar; PGN separado en `build_pgn()` (testeable).
+
 ### Agregado
 - Elegir color contra la IA desde el menú: **Blancas**, **Negras** o **Azar**.
   Si jugás con negras, el tablero se gira solo y la IA hace la primera jugada.
