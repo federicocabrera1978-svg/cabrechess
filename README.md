@@ -57,7 +57,7 @@ Por Federico Cabrera.
 | Guardar PGN | Botón del disquete o "Guardar PGN" al terminar (sin diálogo disponible, se guarda en `~/Documents/CabreChess/`) |
 | Pantalla completa | `F11` o `Alt+Enter` (la ventana también se puede redimensionar y maximizar) |
 | Cerrar / reabrir el panel de fin de partida | `Esc` o "Cerrar" / "Resultado" |
-| Revisar la partida terminada | `←` `→` `Inicio` `Fin` o la barra `|< < > >|` |
+| Revisar la partida terminada | `←` `→` `Inicio` `Fin`, la barra `|< < > >|`, o deshacer (`Ctrl+Z` / ←): con la partida terminada no deshace jugadas, solo retrocede en la revisión |
 
 ## Requisitos y cómo ejecutarlo
 
