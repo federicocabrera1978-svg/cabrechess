@@ -52,7 +52,10 @@ Por Federico Cabrera.
 | Girar el tablero | `F` |
 | Reiniciar la partida | `R` |
 | Volver al menú / salir | `Esc` |
-| Guardar PGN | Botón del disquete |
+| Guardar PGN | Botón del disquete o "Guardar PGN" al terminar (sin diálogo disponible, se guarda en `~/Documents/CabreChess/`) |
+| Pantalla completa | `F11` (la ventana también se puede redimensionar y maximizar) |
+| Cerrar el panel de fin de partida | `Esc` o "Cerrar" |
+| Revisar la partida terminada | `←` `→` `Inicio` `Fin` o la barra `|< < > >|` |
 
 ## Requisitos y cómo ejecutarlo
 
@@ -166,7 +169,7 @@ drag and drop, promotion picker; PGN export; Lichess cburnett pieces; Windows `.
 built reproducibly by GitHub Actions with a SHA-256 checksum.
 
 **Controls:** click or drag to move · right-click/`Esc` cancels a premove · `Ctrl+Z` undo ·
-`F` flip board · `R` restart · `Esc` back to menu / quit.
+`F` flip board · `R` restart · `F11` fullscreen (window is resizable) · `Esc` closes the game-over panel / back to menu / quit · after the game, `←` `→` `Home` `End` review the moves.
 
 **Run it** (Python 3.9+):
 

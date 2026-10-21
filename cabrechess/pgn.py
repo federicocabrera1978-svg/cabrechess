@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Exportación de partidas a PGN."""
 import datetime
+from pathlib import Path
 
 import chess
 
@@ -54,3 +55,26 @@ def build_pgn(board, move_history_san, mode, white_name, black_name, now=None):
     lines += pgn_moves
 
     return "\n".join(lines) + "\n", date_str
+
+
+def default_pgn_dir():
+    """Carpeta por defecto para guardar partidas si no hay diálogo de archivo:
+    ~/Documents/CabreChess (o ~/CabreChess si no existe Documents)."""
+    home = Path.home()
+    docs = home / "Documents"
+    return (docs if docs.is_dir() else home) / "CabreChess"
+
+
+def default_pgn_path(now=None, base_dir=None):
+    """Ruta por defecto con fecha y hora, para no pisar partidas anteriores."""
+    now = now or datetime.datetime.now()
+    base = Path(base_dir) if base_dir else default_pgn_dir()
+    return base / f"CabreChess_{now.strftime('%Y%m%d_%H%M%S')}.pgn"
+
+
+def write_pgn(pgn_text, path):
+    """Escribe el PGN (UTF-8), creando la carpeta si hace falta. Devuelve la ruta."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(pgn_text, encoding="utf-8")
+    return path

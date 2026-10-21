@@ -6,6 +6,21 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Agregado
+- **Panel de fin de partida** con resultado y opciones: Guardar PGN, Revisar
+  partida, Nueva partida y Cerrar. `Esc` lo cierra y deja ver el tablero final;
+  el botón "Resultado" lo vuelve a abrir.
+- **Revisión de la partida terminada**: navegar jugada por jugada con `←` `→`
+  `Inicio` `Fin` o la barra `|< < > >|`; se resalta la jugada en la lista.
+- **Ventana redimensionable**, maximizable y **pantalla completa con F11**. El
+  juego se escala manteniendo la proporción (con barras negras) y el mouse se
+  mapea bien a cualquier tamaño. Tamaño mínimo 770x546.
+- Guardar PGN sin tkinter: si no hay diálogo de archivo, se guarda en
+  `~/Documents/CabreChess/CabreChess_AAAAMMDD_HHMMSS.pgn`.
+
+### Corregido
+- Al terminar la partida aparecía un menú que no se podía cerrar.
+
 ### Cambiado
 - `cabrechess.py` se partió en el paquete `cabrechess/` (`constants`, `engine`,
   `clock`, `pgn`, `sprites`, `ui`, `__main__`) sin cambiar el comportamiento.
