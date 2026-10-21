@@ -6,6 +6,15 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Análisis post-partida
+- Con la partida terminada, **deshacer ya no deshace jugadas ni devuelve
+  tiempo**: resultado y relojes quedan congelados. El botón ← y `Ctrl+Z` solo
+  retroceden en la revisión (junto con `|< < > >|` y las flechas).
+  Se elimina el comportamiento anterior "deshacer después del mate reabre la partida".
+- Panel de fin de partida: **Guardar PGN** y **Revisar / Analizar**.
+- En la revisión se muestra la barra de evaluación de la posición mirada
+  (en cualquier modo) y el nombre de la apertura (ECO).
+
 ### Agregado
 - **Nombre de la apertura** (código ECO + nombre en castellano) arriba de la
   lista de jugadas, también al revisar la partida. Se busca por posición, así
