@@ -6,6 +6,16 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Sonidos
+- **Sonidos** al mover, capturar, enrocar, dar jaque y al terminar la partida
+  (mate, ahogado, tiempo o tablas), más un aviso cuando a tu reloj le quedan
+  10 segundos. Se sintetizan dentro del juego: no hay archivos de audio ni
+  licencias de terceros.
+- Tecla **`M`** para silenciar o reactivar el sonido; la preferencia se guarda
+  en `settings.json` (`"sound": true/false`).
+- Al abrir una partida guardada no suena nada mientras se reconstruye.
+- Sin dispositivo de audio el juego sigue funcionando en silencio.
+
 ### Partidas guardadas, análisis y relojes
 - **Relojes congelados** al terminar la partida, por cualquier motivo: un único
   `end_game()` guarda los tiempos finales, y la jugada que termina la partida ya

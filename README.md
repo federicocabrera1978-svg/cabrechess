@@ -68,6 +68,7 @@ Por Federico Cabrera.
 | Cancelar premove | Click derecho o `Esc` |
 | Deshacer | `Ctrl+Z` o el botón ← |
 | Girar el tablero | `F` |
+| Activar / silenciar el sonido | `M` (se recuerda para la próxima vez) |
 | Reiniciar la partida | `R` |
 | Volver al menú / salir | `Esc` |
 | Guardar PGN | Botón del disquete o "Guardar PGN" al terminar (sin diálogo disponible, se guarda en `~/Documents/CabreChess/`) |
@@ -206,7 +207,7 @@ built reproducibly by GitHub Actions with a SHA-256 checksum.
 **Saved games & analysis:** every finished game is stored automatically in a local SQLite database (`%APPDATA%\\CabreChess\\partidas.db` on Windows, `~/.cabrechess/` elsewhere); browse, open in analysis, export or delete them from *Partidas guardadas*. Analysis shows the best move (arrow + SAN) and evaluation using the built-in engine in-process; Stockfish can optionally be configured via `settings.json` (`stockfish_path`) or `CABRECHESS_STOCKFISH`.
 
 **Controls:** click or drag to move · right-click/`Esc` cancels a premove · `Ctrl+Z` undo ·
-`F` flip board · `R` restart · `F11`/`Alt+Enter` fullscreen (window is resizable) · `Esc` closes the game-over panel / back to menu / quit · after the game, `←` `→` `Home` `End` review the moves.
+`F` flip board · `M` mute/unmute sound · `R` restart · `F11`/`Alt+Enter` fullscreen (window is resizable) · `Esc` closes the game-over panel / back to menu / quit · after the game, `←` `→` `Home` `End` review the moves.
 
 **Run it** (Python 3.9+):
 
