@@ -7,6 +7,10 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Agregado
+- **Nombre de la apertura** (código ECO + nombre en castellano) arriba de la
+  lista de jugadas, también al revisar la partida. Se busca por posición, así
+  que reconoce transposiciones. El PGN exportado suma los headers `ECO` y
+  `Opening`.
 - **Panel de fin de partida** con resultado y opciones: Guardar PGN, Revisar
   partida, Nueva partida y Cerrar. `Esc` lo cierra y deja ver el tablero final;
   el botón "Resultado" lo vuelve a abrir.

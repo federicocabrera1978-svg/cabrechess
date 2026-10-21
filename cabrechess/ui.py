@@ -783,9 +783,16 @@ class CabreChess:
         pygame.draw.rect(self.screen, PANEL_COLOR, panel_rect, border_radius=8)
         pygame.draw.rect(self.screen, BORDER_COLOR, panel_rect, 1, border_radius=8)
 
-        # Título panel
-        title = self.font_small.render("Movimientos", True, TEXT_DIM)
-        self.screen.blit(title, (PANEL_X + 10, BOARD_Y + 10))
+        # Título panel: nombre de la apertura si se reconoce (en revisión,
+        # la de la posición revisada), si no "Movimientos"
+        mode_w = self.font_tiny.size(self.mode_label())[0]
+        opening = self.opening_text(PANEL_W - 40 - mode_w)
+        if opening:
+            title = self.font_tiny.render(opening, True, TEXT_COLOR)
+            self.screen.blit(title, (PANEL_X + 10, BOARD_Y + 12))
+        else:
+            title = self.font_small.render("Movimientos", True, TEXT_DIM)
+            self.screen.blit(title, (PANEL_X + 10, BOARD_Y + 10))
 
         # Movimientos en pares
         list_h = BOARD_SIZE - (140 if self.game_over and not self.game_over_panel else 80)
@@ -873,8 +880,7 @@ class CabreChess:
             self.screen.blit(n_surf, (sw_x + 18, ty))
 
         # Modo
-        mode_names = {"pvp": "PvP", "vsai": f"vs IA (d{self.ai_depth})", "analysis": "Análisis"}
-        m_surf = self.font_tiny.render(mode_names.get(self.mode, ""), True, TEXT_DIM)
+        m_surf = self.font_tiny.render(self.mode_label(), True, TEXT_DIM)
         self.screen.blit(m_surf, (PANEL_X + PANEL_W - m_surf.get_width() - 12, BOARD_Y + 10))
 
         # Toast "PGN guardado"
@@ -889,6 +895,21 @@ class CabreChess:
         # Mini gráfico de evaluación (solo análisis)
         if self.mode == "analysis" and len(self.eval_history) > 1:
             self.draw_eval_graph()
+
+    def mode_label(self):
+        mode_names = {"pvp": "PvP", "vsai": f"vs IA (d{self.ai_depth})", "analysis": "Análisis"}
+        return mode_names.get(self.mode, "")
+
+    def opening_text(self, max_w):
+        """Apertura de la posición mostrada ("B20 · Defensa Siciliana"),
+        recortada con "…" para que entre en max_w píxeles. "" si no hay."""
+        from .openings import opening_label
+        text = opening_label(self.board)
+        if not text or self.font_tiny.size(text)[0] <= max_w:
+            return text
+        while text and self.font_tiny.size(text + "…")[0] > max_w:
+            text = text[:-1]
+        return text.rstrip() + "…"
 
     GAME_OVER_PANEL = (460, 300)
 
