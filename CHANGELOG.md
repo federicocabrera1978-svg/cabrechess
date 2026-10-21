@@ -6,6 +6,16 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Cambiado
+- `cabrechess.py` se partió en el paquete `cabrechess/` (`constants`, `engine`,
+  `clock`, `pgn`, `sprites`, `ui`, `__main__`) sin cambiar el comportamiento.
+  Se ejecuta con `cabrechess` o `python -m cabrechess`.
+- `assets/` se movió a `cabrechess/assets/` y se declara como package data:
+  `pip install .` (no editable) ya trae las piezas y el logo.
+- PyInstaller arranca desde `packaging_entry.py` y empaqueta `cabrechess/assets`.
+- CI: chequeo de `pip install .` fuera del repo y build del `.exe` con el spec.
+- Tests nuevos de `clock`, `pgn` y ubicación de assets.
+
 ### Pulido para portfolio
 - README reescrito: funcionalidades, controles, requisitos, badges, capturas y
   sección en inglés. Capturas de desarrollo movidas a `docs/screenshots/dev/`.

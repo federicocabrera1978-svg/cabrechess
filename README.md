@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo/banner.png" alt="CabreChess" width="520">
+  <img src="cabrechess/assets/logo/banner.png" alt="CabreChess" width="520">
 </p>
 
 <p align="center">
@@ -57,17 +57,21 @@ Por Federico Cabrera.
 
 Python **3.9 o más nuevo** (CI usa 3.12).
 
-```
-pip install -r requirements.txt
-python cabrechess.py
-```
-
-O instalarlo como comando (modo editable, así encuentra la carpeta `assets/`):
+Instalarlo como comando (las piezas y el logo vienen dentro del paquete):
 
 ```
-pip install -e .
+pip install .
 cabrechess
 ```
+
+O directo desde el código, sin instalar:
+
+```
+pip install -r requirements.txt
+python -m cabrechess
+```
+
+Para desarrollar conviene `pip install -e ".[dev]"`.
 
 > En Linux, guardar PGN usa el diálogo de `tkinter`; si falta, instalá `python3-tk`.
 
@@ -116,14 +120,29 @@ pip install -r requirements-dev.txt
 pyinstaller CabreChess.spec
 ```
 
-El spec empaqueta `assets/` (piezas y logo), usa `assets/logo/cabrechess.ico`
+El spec arranca desde `packaging_entry.py`, empaqueta `cabrechess/assets/` (piezas y logo), usa `cabrechess/assets/logo/cabrechess.ico`
 como ícono del `.exe` y toma los metadatos de versión de `version_info.txt`.
 El logo se regenera con `python tools/make_logo.py` (necesita Pillow).
+
+## Estructura del código
+
+```
+cabrechess/
+├── __init__.py    # API pública: CabreChess, SimpleEngine, main
+├── __main__.py    # python -m cabrechess
+├── constants.py   # tamaños de ventana, colores, glifos
+├── engine.py      # motor propio (minimax + alfa-beta + tablas pieza-casilla)
+├── clock.py       # formato del reloj y resultado por bandera
+├── pgn.py         # exportación a PGN
+├── sprites.py     # piezas cburnett / dibujadas, ícono, ubicación de assets
+├── ui.py          # interfaz pygame (clase CabreChess, loop, eventos)
+└── assets/        # piezas cburnett y logo (se instalan con el paquete)
+```
 
 ## Créditos y licencia
 
 - Piezas: set **cburnett** de Colin M.L. Burnett (GPLv2+), el mismo que usa Lichess.
-  Ver `assets/pieces/cburnett/LICENSE`. El logo usa el caballo de ese set.
+  Ver `cabrechess/assets/pieces/cburnett/LICENSE`. El logo usa el caballo de ese set.
 - Código: **GPL-3.0-or-later**. Ver [LICENSE](LICENSE).
 
 ---
@@ -146,8 +165,8 @@ built reproducibly by GitHub Actions with a SHA-256 checksum.
 **Run it** (Python 3.9+):
 
 ```
-pip install -r requirements.txt
-python cabrechess.py
+pip install .
+cabrechess          # or, without installing: python -m cabrechess
 ```
 
 **Tests:** `pip install -r requirements-dev.txt && ruff check . && python -m pytest`
