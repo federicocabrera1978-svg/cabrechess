@@ -69,3 +69,10 @@ jobs:
       - name: Check
         shell: pwsh
         run: if (!(Test-Path dist/CabreChess.exe)) { exit 1 }
+      - name: Upload exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: CabreChess-exe
+          path: dist/CabreChess.exe
+          retention-days: 14
+          if-no-files-found: error
