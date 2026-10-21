@@ -5,6 +5,8 @@ from pathlib import Path
 
 import chess
 
+from .openings import opening_for_board
+
 MODE_TAGS = {"pvp": "PvP", "vsai": "vs IA", "analysis": "Análisis"}
 
 
@@ -31,8 +33,11 @@ def build_pgn(board, move_history_san, mode, white_name, black_name, now=None):
         f'[White "{white_name}"]',
         f'[Black "{black_name}"]',
         f'[Result "{result}"]',
-        '',
     ]
+    opening = opening_for_board(board)
+    if opening:
+        lines += [f'[ECO "{opening[0]}"]', f'[Opening "{opening[1]}"]']
+    lines.append('')
 
     # Movimientos en formato PGN
     moves_line = ""

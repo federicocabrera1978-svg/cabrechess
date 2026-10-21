@@ -38,6 +38,8 @@ Por Federico Cabrera.
 - **Deshacer** completo: devuelve también los relojes, las piezas capturadas y la evaluación.
 - **Premoves**, arrastrar y soltar, resaltado de jugadas legales y de la última jugada,
   promoción con selector.
+- **Nombre de la apertura** con su código ECO arriba de la lista de jugadas (reconoce
+  transposiciones) y en los headers `ECO`/`Opening` del PGN.
 - **Exportar a PGN** (se abre en Lichess, ChessBase, etc.).
 - Piezas **cburnett** (las de Lichess) y ejecutable para Windows con checksum SHA-256.
 
@@ -154,6 +156,7 @@ cabrechess/
 ├── engine.py      # motor propio (minimax + alfa-beta + tablas pieza-casilla)
 ├── clock.py       # formato del reloj y resultado por bandera
 ├── pgn.py         # exportación a PGN
+├── openings.py    # nombres de aperturas (ECO), búsqueda por posición
 ├── sprites.py     # piezas cburnett / dibujadas, ícono, ubicación de assets
 ├── ui.py          # interfaz pygame (clase CabreChess, loop, eventos)
 └── assets/        # piezas cburnett y logo (se instalan con el paquete)
