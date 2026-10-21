@@ -19,6 +19,11 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
   `~/Documents/CabreChess/CabreChess_AAAAMMDD_HHMMSS.pgn`.
 
 ### Corregido
+- Builds de Windows sin UPX (fuente común de falsos positivos de antivirus) y
+  nuevo build **onedir** (`CabreChess-win64.zip`, `CabreChess-onedir.spec`)
+  que no se autoextrae a `%TEMP%`; CI y release publican ambos formatos.
+- Test que garantiza que el paquete no lanza subprocesos ni usa red, registro
+  o motores externos (el análisis es 100% en el proceso).
 - Al terminar la partida aparecía un menú que no se podía cerrar.
 - Windows: el proceso declara DPI awareness (no más ventana borrosa o
   limitada con escalado 125/150%); tamaño inicial según el escritorio;

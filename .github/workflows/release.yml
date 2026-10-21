@@ -23,7 +23,11 @@ jobs:
 
       - name: Build executable
         # El spec incluye assets/ (piezas y logo), el ícono y los metadatos de versión
-        run: pyinstaller CabreChess.spec
+        run: |
+          pyinstaller CabreChess.spec
+          pyinstaller --distpath dist-onedir CabreChess-onedir.spec
+          Compress-Archive -Path dist-onedir/CabreChess -DestinationPath dist/CabreChess-win64.zip
+        shell: pwsh
 
       # Uncomment once the project is approved by SignPath Foundation
       # (https://signpath.org/) and the SIGNPATH_API_TOKEN secret,
@@ -51,10 +55,14 @@ jobs:
         run: |
           $hash = Get-FileHash -Path dist/CabreChess.exe -Algorithm SHA256
           "$($hash.Hash)  CabreChess.exe" | Out-File -Encoding ascii CabreChess.exe.sha256
+          $zip = Get-FileHash -Path dist/CabreChess-win64.zip -Algorithm SHA256
+          "$($zip.Hash)  CabreChess-win64.zip" | Out-File -Encoding ascii CabreChess-win64.zip.sha256
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            dist/CabreChess-win64.zip
+            CabreChess-win64.zip.sha256
             dist/CabreChess.exe
             CabreChess.exe.sha256
