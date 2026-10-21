@@ -477,7 +477,9 @@ class CabreChess:
 
     def _draw_game(self):
         # Barra de evaluación (solo en modo análisis)
-        if self.mode == "analysis":
+        # Barra de evaluación: en modo análisis, y en la revisión de cualquier
+        # partida terminada (evalúa la posición que se está mirando)
+        if self.mode == "analysis" or self.game_over:
             self.draw_eval_bar()
 
         # Panel superior: el bando que está arriba del tablero
@@ -541,7 +543,7 @@ class CabreChess:
             pygame.Rect(bar_x, bar_y, bar_w, bar_h), border_radius=4)
 
         # Convertir score a proporción (clampeado a ±6 peones = extremo)
-        score = self.eval_score
+        score = self.engine.evaluate(self.board) if self.game_over else self.eval_score
         MAX_SCORE = 600  # centipawns
         clamped = max(-MAX_SCORE, min(MAX_SCORE, score))
         # Proporción blancas (0=todo negro, 1=todo blancas)
@@ -936,7 +938,7 @@ class CabreChess:
         """Botones del panel de fin de partida: (etiqueta, acción, rect)."""
         pw, ph = self.GAME_OVER_PANEL
         py = WINDOW_H//2 - ph//2
-        specs = [("Guardar PGN", self.save_pgn), ("Revisar partida", self.start_review),
+        specs = [("Guardar PGN", self.save_pgn), ("Revisar / Analizar", self.start_review),
                  ("Nueva partida", self.reset_game), ("Cerrar", self.close_game_over_panel)]
         out = []
         for i, (label, action) in enumerate(specs):
@@ -1330,7 +1332,13 @@ class CabreChess:
         piezas capturadas, evaluación, historial y premoves.
         En vs IA vuelve hasta que le toque al jugador (normalmente 2 jugadas).
         Si la IA está pensando, cancela la búsqueda y deshace la jugada
-        del jugador."""
+        del jugador.
+        Con la partida terminada NO deshace nada: el resultado y los relojes
+        quedan congelados y el botón solo retrocede en la revisión."""
+        if self.game_over:
+            self.game_over_panel = False
+            self.review_step(-1)
+            return
         if not self.board.move_stack:
             return
         # Cancelar una búsqueda en curso: su resultado se descarta
