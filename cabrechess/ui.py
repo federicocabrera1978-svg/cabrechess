@@ -51,6 +51,8 @@ from .database import GameDB
 from .endings import PGN_TERMINATION, detect_end, end_message, flag_end
 from .engine import SimpleEngine
 from .pgn import build_pgn, default_pgn_path, write_pgn
+from .settings import load_settings, save_setting
+from .sounds import LOW_TIME_SECONDS, SoundManager, sound_for_move
 from .sprites import PIECE_NAMES, load_window_icon, make_piece_shadow, make_piece_sprite
 
 
@@ -106,6 +108,9 @@ class CabreChess:
         self.ai_think_start = 0
         self.ai_delay = 0.6
         self.engine = SimpleEngine()
+        self.sound = SoundManager(enabled=load_settings().get("sound", True))
+        self.silent = False             # True al reconstruir partidas (sin sonido)
+        self.low_time_warned = set()    # colores ya avisados con reloj bajo
         self.analyzer = None            # análisis en segundo plano (lazy)
         self.db = None                  # partidas.db (lazy)
         self.result = "*"
@@ -1322,7 +1327,10 @@ class CabreChess:
 
         san = self.board.san(move)
         mover_color = self.board.turn   # color ANTES de push
+        board_before = self.board.copy(stack=False)
         self.board.push(move)
+        if not self.silent:
+            self.sound.play(sound_for_move(board_before, move, self.board))
         self.last_move = move
         self.move_history.append(move.uci())
         self.move_history_san.append(san)
@@ -1384,6 +1392,9 @@ class CabreChess:
         self.result = result
         self.game_over_msg = end_message(termination, result)
         self.final_times = (self.time_white, self.time_black)
+        if termination not in ("checkmate", "stalemate") and not self.silent:
+            # mate/ahogado ya sonaron con la jugada; acá tiempo, tablas, etc.
+            self.sound.play("end")
         self.time_last = time.time()
         self.cancel_ai_search()
         self.clear_premove()
@@ -1478,6 +1489,7 @@ class CabreChess:
         self.time_white = self.time_selected
         self.time_black = self.time_selected
         self.time_last = time.time()
+        self.low_time_warned = set()
         self.maybe_start_ai()
 
     def undo_move(self):
@@ -1625,6 +1637,24 @@ class CabreChess:
             return None
         self.toast(f"Guardado: {path.parent.name}/{path.name}")
         return path
+
+    def toggle_sound(self):
+        on = self.sound.toggle()
+        save_setting("sound", on)
+        self.toast("Sonido activado" if on else "Sonido silenciado")
+        return on
+
+    def check_low_time(self):
+        """Un aviso por color cuando su reloj baja de LOW_TIME_SECONDS
+        (solo si la partida tiene más tiempo que eso)."""
+        if not self.use_timer or self.game_over:
+            return
+        for color, left in ((chess.WHITE, self.time_white), (chess.BLACK, self.time_black)):
+            if (color not in self.low_time_warned and 0 < left <= LOW_TIME_SECONDS
+                    and self.board.turn == color):
+                self.low_time_warned.add(color)
+                if not (self.mode == "vsai" and color == self.ai_color):
+                    self.sound.play("low_time")
 
     def toast(self, msg):
         self.pgn_saved_msg = msg
@@ -1851,14 +1881,18 @@ class CabreChess:
         self.board = game.board()            # respeta [FEN] si no arrancó de la inicial
         self.loaded_game_id = game_id
         self._game_over_seen = True          # no abrir panel ni autoguardar
-        for move in game.mainline_moves():
-            if move not in self.board.legal_moves:
-                break
-            self.execute_move(move)
-        self.anim_move = None
+        self.silent = True                   # reconstruir sin sonidos
+        try:
+            for move in game.mainline_moves():
+                if move not in self.board.legal_moves:
+                    break
+                self.execute_move(move)
+            self.anim_move = None
+            self.game_over = False            # forzar el resultado guardado
+            self.end_game(row["termination"], row["result"])
+        finally:
+            self.silent = False
         self.particles = []
-        self.game_over = False                # forzar el resultado guardado
-        self.end_game(row["termination"], row["result"])
         self._game_over_seen = True
         self.game_over_panel = False
         self.review_index = 0 if self.board.move_stack else None
@@ -1906,6 +1940,8 @@ class CabreChess:
                         return False
                 elif event.key == pygame.K_f:
                     self.flip_board()
+                elif event.key == pygame.K_m:
+                    self.toggle_sound()
                 elif event.key == pygame.K_r:
                     self.reset_game()
                 elif event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL):
@@ -2208,6 +2244,7 @@ class CabreChess:
                 self.time_black = max(0, self.time_black - dt)
                 if self.time_black == 0:
                     self.flag_fall(chess.BLACK)
+            self.check_low_time()
         self.time_last = now
 
         # IA — el cálculo corre en un hilo aparte (start_ai_search); acá solo
