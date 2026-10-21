@@ -26,21 +26,21 @@ def test_mate(game):
     _setup(game, "6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1")
     game.execute_move(chess.Move.from_uci("a1a8"))
     _fin(game)
-    assert "Mate" in game.game_over_msg
+    assert "¡Jaque mate! Ganan las blancas" in game.game_over_msg
 
 
 def test_ahogado(game):
     _setup(game, "7k/8/6Q1/8/8/8/8/K7 w - - 0 1")
     game.execute_move(chess.Move.from_uci("g6f7"))
     _fin(game)
-    assert "Ahogado" in game.game_over_msg
+    assert "Tablas por ahogado" in game.game_over_msg
 
 
 def test_material_insuficiente(game):
     _setup(game, "7k/8/8/8/8/8/1q6/K7 w - - 0 1")
     game.execute_move(chess.Move.from_uci("a1b2"))
     _fin(game)
-    assert "insuficiente" in game.game_over_msg
+    assert "Tablas por material insuficiente" in game.game_over_msg
 
 
 def test_triple_repeticion(game):
@@ -50,14 +50,14 @@ def test_triple_repeticion(game):
             break
         game.execute_move(chess.Move.from_uci(uci))
     _fin(game)
-    assert "repetición" in game.game_over_msg.lower()
+    assert "Tablas por triple repetición" in game.game_over_msg
 
 
 def test_regla_50_movimientos(game):
     _setup(game, "4k3/8/8/8/8/8/8/R3K3 w - - 99 80")
     game.execute_move(chess.Move.from_uci("a1a2"))
     _fin(game)
-    assert "50" in game.game_over_msg
+    assert "Tablas por la regla de 50 movimientos" in game.game_over_msg
 
 
 def test_bandera(game):
@@ -67,7 +67,7 @@ def test_bandera(game):
     game.time_last = time.time() - 1
     game.update()
     _fin(game)
-    assert "Tiempo agotado" in game.game_over_msg
+    assert "Ganan las blancas por tiempo" in game.game_over_msg
 
 
 def test_bandera_de_la_ia_cancela_la_busqueda(game):

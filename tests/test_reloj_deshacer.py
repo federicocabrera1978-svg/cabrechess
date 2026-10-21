@@ -27,7 +27,7 @@ def test_bandera_con_material_gana(game):
     game.start_game("pvp")
     game.flag_fall(chess.WHITE)
     assert game.game_over
-    assert "Negras ganan" in game.game_over_msg
+    assert "Ganan las negras por tiempo" in game.game_over_msg
 
 
 def test_bandera_contra_material_insuficiente_es_tablas(game):
@@ -37,11 +37,12 @@ def test_bandera_contra_material_insuficiente_es_tablas(game):
     game.board = chess.Board("4k3/8/8/8/8/8/8/3QK3 w - - 0 1")
     game.flag_fall(chess.WHITE)
     assert game.game_over
-    assert "Tablas" in game.game_over_msg
+    assert "Tablas por tiempo" in game.game_over_msg
     # Al revés: a negras se les cae y blancas tienen dama, ganan blancas.
+    game.reset_game()
     game.board = chess.Board("4k3/8/8/8/8/8/8/3QK3 b - - 0 1")
     game.flag_fall(chess.BLACK)
-    assert "Blancas ganan" in game.game_over_msg
+    assert "Ganan las blancas por tiempo" in game.game_over_msg
 
 
 def test_bandera_desde_update(game):
@@ -49,7 +50,7 @@ def test_bandera_desde_update(game):
     game.time_white = 0.0001
     game.time_last -= 1
     game.update()
-    assert game.game_over and "Tiempo agotado" in game.game_over_msg
+    assert game.game_over and "Ganan las negras por tiempo" in game.game_over_msg
 
 
 # ─── Deshacer ───────────────────────────────────────────────────────────────
