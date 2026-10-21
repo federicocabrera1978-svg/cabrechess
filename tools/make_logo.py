@@ -78,12 +78,12 @@ def make_banner(icon):
     font = ImageFont.truetype(str(FONT), 170)
     try:
         font.set_variation_by_name("ExtraBold")
-    except Exception:
+    except (OSError, AttributeError):  # fuente no variable / sin libraqm
         pass
     small = ImageFont.truetype(str(FONT), 46)
     try:
         small.set_variation_by_name("Medium")
-    except Exception:
+    except (OSError, AttributeError):  # fuente no variable / sin libraqm
         pass
     title, sub = "CabreChess", "Ajedrez en Python, inspirado en Lichess"
     tw = int(font.getlength(title))

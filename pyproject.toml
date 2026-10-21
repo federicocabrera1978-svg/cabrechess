@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cabrechess"
+version = "0.1.0"
+description = "Ajedrez de escritorio en Python/pygame inspirado en Lichess: IA, análisis, reloj y PGN."
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "Federico Cabrera" }]
+requires-python = ">=3.9"
+dependencies = ["pygame>=2.5", "chess>=1.10"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Topic :: Games/Entertainment :: Board Games",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "pyinstaller==6.21.0"]
+
+[project.scripts]
+cabrechess = "cabrechess:main"
+
+[project.urls]
+Homepage = "https://github.com/federicocabrera1978-svg/cabrechess"
+
+[tool.setuptools]
+py-modules = ["cabrechess"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+extend-exclude = ["build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+# Estilo existente (tablas alineadas a mano, lambdas en loops de UI): no se
+# reformatea en este PR.
+ignore = ["E201", "E202", "E203", "E221", "E222", "E231", "E241", "E702", "E731", "E741", "B023"]

@@ -19,7 +19,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt pyinstaller==6.21.0
 
       - name: Build executable
         # El spec incluye assets/ (piezas y logo), el ícono y los metadatos de versión
