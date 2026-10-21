@@ -18,9 +18,9 @@ def test_format_clock():
 def test_flag_fall_message():
     # Al rival le alcanza el material: gana
     board = chess.Board("4k3/8/8/8/8/8/8/3QK3 w - - 0 1")
-    assert flag_fall_message(board, chess.BLACK).endswith("Blancas ganan")
+    assert "Ganan las blancas por tiempo" in flag_fall_message(board, chess.BLACK)
     # Rival con rey solo: tablas
-    assert "Tablas" in flag_fall_message(board, chess.WHITE)
+    assert "Tablas por tiempo" in flag_fall_message(board, chess.WHITE)
 
 
 def test_game_result():

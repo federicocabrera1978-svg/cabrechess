@@ -19,12 +19,15 @@ def game_result(board):
     return "*"
 
 
-def build_pgn(board, move_history_san, mode, white_name, black_name, now=None):
-    """Arma el texto PGN. Devuelve (pgn_text, date_str)."""
+def build_pgn(board, move_history_san, mode, white_name, black_name, now=None,
+              result=None, termination=None, time_control=None):
+    """Arma el texto PGN. Devuelve (pgn_text, date_str).
+    result/termination permiten fijar el resultado cuando la posición no lo
+    dice sola (p. ej. derrota por tiempo)."""
     now = now or datetime.datetime.now()
     date_str = now.strftime("%Y.%m.%d")
     mode_tag = MODE_TAGS.get(mode, "?")
-    result = game_result(board)
+    result = result or game_result(board)
 
     lines = [
         f'[Event "CabreChess — {mode_tag}"]',
@@ -34,6 +37,13 @@ def build_pgn(board, move_history_san, mode, white_name, black_name, now=None):
         f'[Black "{black_name}"]',
         f'[Result "{result}"]',
     ]
+    root = board.root()
+    if root.fen() != chess.STARTING_FEN:
+        lines += ['[SetUp "1"]', f'[FEN "{root.fen()}"]']
+    if time_control:
+        lines.append(f'[TimeControl "{time_control}"]')
+    if termination:
+        lines.append(f'[Termination "{termination}"]')
     opening = opening_for_board(board)
     if opening:
         lines += [f'[ECO "{opening[0]}"]', f'[Opening "{opening[1]}"]']
@@ -41,10 +51,16 @@ def build_pgn(board, move_history_san, mode, white_name, black_name, now=None):
 
     # Movimientos en formato PGN
     moves_line = ""
+    number, white_to_move = root.fullmove_number, root.turn == chess.WHITE
     for i, san in enumerate(move_history_san):
-        if i % 2 == 0:
-            moves_line += f"{i//2 + 1}. "
+        if white_to_move:
+            moves_line += f"{number}. "
+        elif i == 0:
+            moves_line += f"{number}... "
         moves_line += san + " "
+        if not white_to_move:
+            number += 1
+        white_to_move = not white_to_move
     moves_line += result
     # Partir en líneas de ~80 chars
     words = moves_line.split()

@@ -87,3 +87,17 @@ class SimpleEngine:
         maximizing = board.turn == chess.WHITE
         _, move = self.minimax(board, depth, -math.inf, math.inf, maximizing)
         return move
+
+    MATE_THRESHOLD = 90000
+
+    def analyse(self, board, depth=3):
+        """(score_cp_blancas, mate, jugada). mate es +1/-1 si el motor ve mate
+        a favor de blancas/negras dentro de la profundidad, o None."""
+        if board.is_game_over():
+            return self.evaluate(board), None, None
+        maximizing = board.turn == chess.WHITE
+        score, move = self.minimax(board.copy(stack=False), depth, -math.inf, math.inf, maximizing)
+        mate = None
+        if abs(score) >= self.MATE_THRESHOLD:
+            mate = 1 if score > 0 else -1
+        return score, mate, move

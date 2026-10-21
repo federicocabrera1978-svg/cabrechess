@@ -6,6 +6,22 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Partidas guardadas, análisis y relojes
+- **Relojes congelados** al terminar la partida, por cualquier motivo: un único
+  `end_game()` guarda los tiempos finales, y la jugada que termina la partida ya
+  no suma incremento.
+- **Barra de revisión siempre visible** al cerrar el panel o elegir
+  "Revisar / Analizar" (antes recién aparecía al retroceder una jugada).
+- **Carteles de resultado** claros: "¡Jaque mate! Ganan las blancas", "Ganan las
+  negras por tiempo", "Tablas por ahogado / triple repetición / regla de 50
+  movimientos / material insuficiente"…
+- **Base de partidas** (SQLite) con autoguardado de cada partida terminada y
+  pantalla **Partidas guardadas** (abrir en análisis, exportar PGN, borrar).
+- **Mejor jugada** en análisis/revisión (flecha + SAN + evaluación), calculada en
+  segundo plano con el motor propio. Stockfish opcional vía `settings.json`.
+- PGN: `[Result]` correcto en derrotas por tiempo, `[Termination]`,
+  `[TimeControl]`, y `[SetUp]/[FEN]` si la partida no arrancó de la posición inicial.
+
 ### Análisis post-partida
 - Con la partida terminada, **deshacer ya no deshace jugadas ni devuelve
   tiempo**: resultado y relojes quedan congelados. El botón ← y `Ctrl+Z` solo

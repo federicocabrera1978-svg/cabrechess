@@ -9,7 +9,7 @@ import time
 import chess
 import pygame
 
-from .clock import TIME_INCREMENT, TIME_OPTIONS, flag_fall_message, format_clock
+from .clock import TIME_INCREMENT, TIME_OPTIONS, format_clock
 from .constants import (
     ACCENT,
     ACCENT2,
@@ -46,6 +46,9 @@ from .display import (
     initial_window_size,
     window_to_logical,
 )
+from .analysis import Analyzer
+from .database import GameDB
+from .endings import PGN_TERMINATION, detect_end, end_message, flag_end
 from .engine import SimpleEngine
 from .pgn import build_pgn, default_pgn_path, write_pgn
 from .sprites import PIECE_NAMES, load_window_icon, make_piece_shadow, make_piece_sprite
@@ -103,6 +106,18 @@ class CabreChess:
         self.ai_think_start = 0
         self.ai_delay = 0.6
         self.engine = SimpleEngine()
+        self.analyzer = None            # análisis en segundo plano (lazy)
+        self.db = None                  # partidas.db (lazy)
+        self.result = "*"
+        self.termination = ""
+        self.final_times = None
+        self.saved_game_id = None
+        self.loaded_game_id = None
+        self.loaded_names = None
+        self.saved_games = []
+        self.saved_sel = None
+        self.saved_scroll = 0
+        self.saved_confirm_delete = None
         self.ai_depth = 3
         self.ai_thread = None
         self.ai_move_ready = False
@@ -311,6 +326,8 @@ class CabreChess:
 
         if self.mode == "menu":
             self.draw_menu()
+        elif self.mode == "saved":
+            self.draw_saved_games()
         else:
             self.draw_game()
 
@@ -432,9 +449,10 @@ class CabreChess:
             ("Jugar contra IA",    "piece:BP", "vsai",     ACCENT),
             ("2 Jugadores (PvP)",  "piece:WN", "pvp",      ACCENT2),
             ("Análisis",           "chart",   "analysis", (150, 150, 150)),
+            ("Partidas guardadas", "save",    "saved",    (200, 180, 80)),
         ]
         return [(label, icon, action, color,
-                 pygame.Rect(WINDOW_W//2 - 160, 330 + i*72, 320, 52))
+                 pygame.Rect(WINDOW_W//2 - 160, 290 + i*62, 320, 50))
                 for i, (label, icon, action, color) in enumerate(items)]
 
     def menu_option_rows(self):
@@ -469,6 +487,67 @@ class CabreChess:
         finally:
             self.board, self.last_move = live_board, live_last
 
+    # ─── ANÁLISIS (mejor jugada en segundo plano) ───────────────────────────────
+    def analysis_active(self):
+        """Análisis visible: en modo análisis, o revisando una partida terminada."""
+        return self.mode == "analysis" or (self.game_over and not self.game_over_panel)
+
+    def displayed_board(self):
+        return self.review_board() if self.review_index is not None else self.board
+
+    def get_analyzer(self):
+        if self.analyzer is None:
+            from .settings import load_settings
+            cfg = load_settings()
+            self.analyzer = Analyzer(depth=cfg["analysis_depth"],
+                                     stockfish_path=cfg["stockfish_path"])
+        return self.analyzer
+
+    def request_analysis(self):
+        if self.mode in ("analysis", "pvp", "vsai") and self.analysis_active():
+            self.get_analyzer().request(self.displayed_board())
+
+    def analysis_result(self):
+        """Resultado para la posición que se está dibujando (self.board ya es
+        la posición revisada dentro de draw_game)."""
+        if self.analyzer is None or not self.analysis_active():
+            return None
+        return self.analyzer.result(self.board)
+
+    def draw_best_move_arrow(self):
+        res = self.analysis_result()
+        if res is None or res.move is None:
+            return
+        start = pygame.Vector2(self.center_of_sq(res.move.from_square))
+        end = pygame.Vector2(self.center_of_sq(res.move.to_square))
+        if (end - start).length() < 1:
+            return
+        direction = (end - start).normalize()
+        normal = pygame.Vector2(-direction.y, direction.x)
+        head = SQUARE_SIZE * 0.38
+        tip = end - direction * (SQUARE_SIZE * 0.12)
+        base = tip - direction * head
+        overlay = pygame.Surface((BOARD_SIZE, BOARD_SIZE), pygame.SRCALPHA)
+        off = pygame.Vector2(BOARD_X, BOARD_Y)
+        color = (21, 120, 27, 170)          # verde flecha Lichess
+        pygame.draw.line(overlay, color, start - off, base - off, max(6, SQUARE_SIZE // 7))
+        pygame.draw.polygon(overlay, color, [tip - off, base + normal * head * 0.6 - off,
+                                             base - normal * head * 0.6 - off])
+        self.screen.blit(overlay, (BOARD_X, BOARD_Y))
+
+    def draw_analysis_line(self, y):
+        res = self.analysis_result()
+        if res is None:
+            text, color = "Analizando…", TEXT_DIM
+        elif res.move is None:
+            text, color = "Sin jugadas (partida terminada)", TEXT_DIM
+        else:
+            text = f"Mejor: {res.san}   {res.score_text()}   ({res.engine}, d{res.depth})"
+            color = ACCENT
+        surf = self.font_small.render(text, True, color)
+        pygame.draw.rect(self.screen, (38, 37, 34), (PANEL_X + 5, y, PANEL_W - 20, 22), border_radius=4)
+        self.screen.blit(surf, (PANEL_X + 10, y + 11 - surf.get_height() // 2))
+
     def review_board(self):
         board = self.board.root()
         for move in self.board.move_stack[:self.review_index]:
@@ -500,6 +579,10 @@ class CabreChess:
         # Coordenadas (después de las piezas para que no queden tapadas)
         self.draw_coordinates()
 
+        # Mejor jugada del análisis (flecha)
+        if self.analysis_active():
+            self.draw_best_move_arrow()
+
         # Animación de movimiento
         if self.anim_move:
             self.draw_animation()
@@ -521,7 +604,9 @@ class CabreChess:
         # Overlay fin de juego
         if self.game_over and self.game_over_panel:
             self.draw_game_over()
-        elif self.review_index is not None:
+        elif self.game_over:
+            # Partida terminada y panel cerrado: SIEMPRE se ve la barra de
+            # revisión (antes solo aparecía tras retroceder una jugada)
             self.draw_review_bar()
 
         # Thinking indicator
@@ -543,7 +628,11 @@ class CabreChess:
             pygame.Rect(bar_x, bar_y, bar_w, bar_h), border_radius=4)
 
         # Convertir score a proporción (clampeado a ±6 peones = extremo)
-        score = self.engine.evaluate(self.board) if self.game_over else self.eval_score
+        res = self.analysis_result()
+        if res is not None:
+            score = res.score
+        else:
+            score = self.engine.evaluate(self.board) if self.game_over else self.eval_score
         MAX_SCORE = 600  # centipawns
         clamped = max(-MAX_SCORE, min(MAX_SCORE, score))
         # Proporción blancas (0=todo negro, 1=todo blancas)
@@ -583,6 +672,8 @@ class CabreChess:
         if self.mode == "vsai":
             if color == self.ai_color:
                 name = "CabreChess AI"
+        if self.loaded_names:                     # partida abierta desde la base
+            name = self.loaded_names[0 if color == chess.WHITE else 1]
         sym_surf = make_piece_sprite(chess.KING, color, 22)
         name_surf = self.font_small.render(name, True, TEXT_COLOR)
         turn_indicator = color == self.board.turn and not self.game_over
@@ -816,8 +907,12 @@ class CabreChess:
             self.screen.blit(title, (PANEL_X + 10, BOARD_Y + 10))
 
         # Movimientos en pares
-        list_h = BOARD_SIZE - (140 if self.game_over and not self.game_over_panel else 80)
-        clip_rect = pygame.Rect(PANEL_X + 5, BOARD_Y + 30, PANEL_W - 20, list_h)
+        top = 30
+        if self.analysis_active():
+            self.draw_analysis_line(BOARD_Y + 30)
+            top = 54
+        list_h = BOARD_SIZE - (140 if self.game_over and not self.game_over_panel else 80) - (top - 30)
+        clip_rect = pygame.Rect(PANEL_X + 5, BOARD_Y + top, PANEL_W - 20, list_h)
         self.screen.set_clip(clip_rect)
 
         row_h = 24
@@ -835,8 +930,8 @@ class CabreChess:
 
         for i in range(0, len(self.move_history_san), 2):
             row = i // 2
-            y = BOARD_Y + 32 + (row - self.history_scroll) * row_h
-            if y < BOARD_Y + 28 or y > BOARD_Y + BOARD_SIZE - 30:
+            y = BOARD_Y + top + 2 + (row - self.history_scroll) * row_h
+            if y < BOARD_Y + top - 2 or y > BOARD_Y + BOARD_SIZE - 30:
                 continue
 
             # Número
@@ -932,7 +1027,7 @@ class CabreChess:
             text = text[:-1]
         return text.rstrip() + "…"
 
-    GAME_OVER_PANEL = (460, 300)
+    GAME_OVER_PANEL = (560, 300)
 
     def game_over_buttons(self):
         """Botones del panel de fin de partida: (etiqueta, acción, rect)."""
@@ -965,8 +1060,12 @@ class CabreChess:
         self.draw_icon(icon, (WINDOW_W//2, py + 48), ACCENT, size=40)
 
         if len(lines) > 1:
-            msg_surf = self.font_large.render(lines[1], True, TEXT_BRIGHT)
-            self.screen.blit(msg_surf, (WINDOW_W//2 - msg_surf.get_width()//2, py + 80))
+            # Cartel grande; si no entra, una fuente más chica
+            for font in (self.font_xl, self.font_large, self.font_med):
+                msg_surf = font.render(lines[1], True, TEXT_BRIGHT)
+                if msg_surf.get_width() <= pw - 30:
+                    break
+            self.screen.blit(msg_surf, (WINDOW_W//2 - msg_surf.get_width()//2, py + 74))
         if len(lines) > 2:
             sub_surf = self.font_med.render(lines[2], True, TEXT_COLOR)
             self.screen.blit(sub_surf, (WINDOW_W//2 - sub_surf.get_width()//2, py + 115))
@@ -1036,6 +1135,55 @@ class CabreChess:
             self.legal_moves_from = []
             self.dragging = False
             self.drag_piece = None
+            self.autosave_game()
+
+    # ─── BASE DE DATOS DE PARTIDAS ──────────────────────────────────────────────
+    def get_db(self):
+        if self.db is None:
+            try:
+                self.db = GameDB()
+            except (OSError, Exception) as e:   # noqa: BLE001 - sqlite3.Error y similares
+                self.toast(f"No se pudo abrir la base de partidas: {e}")
+                return None
+        return self.db
+
+    def time_control(self):
+        if not self.use_timer:
+            return "-"
+        return f"{int(self.time_selected)}+{int(self.time_increment)}"
+
+    def player_names(self):
+        white_name, black_name = self.pgn_white, self.pgn_black
+        if self.mode == "vsai":
+            if self.ai_color == chess.BLACK:
+                black_name = "CabreChess AI"
+            else:
+                white_name = "CabreChess AI"
+        return white_name, black_name
+
+    def autosave_game(self):
+        """Guarda la partida terminada en partidas.db (una sola vez). No guarda
+        el modo análisis ni partidas abiertas desde la base."""
+        if (self.mode not in ("pvp", "vsai") or self.loaded_game_id is not None
+                or self.saved_game_id is not None):
+            return None
+        db = self.get_db()
+        if db is None:
+            return None
+        from .openings import opening_for_board
+        opening = opening_for_board(self.board) or ("", "")
+        white, black = self.player_names()
+        pgn_text, _ = self.build_pgn()
+        try:
+            self.saved_game_id = db.add_game(
+                mode=self.mode, white=white, black=black, result=self.result,
+                termination=self.termination, eco=opening[0], opening=opening[1],
+                time_control=self.time_control(), num_moves=len(self.board.move_stack),
+                pgn=pgn_text)
+        except Exception as e:  # noqa: BLE001 - disco lleno, base bloqueada...
+            self.toast(f"No se pudo guardar en el historial: {e}")
+            return None
+        return self.saved_game_id
 
     def clear_game_over_ui(self):
         self.game_over_panel = False
@@ -1181,11 +1329,7 @@ class CabreChess:
 
         # Incremento Fischer: se suma en TODAS las jugadas (también la
         # primera) y sin tope, como en Lichess/FIDE.
-        if self.use_timer:
-            if mover_color == chess.WHITE:
-                self.time_white += self.time_increment
-            else:
-                self.time_black += self.time_increment
+        self._last_mover = mover_color
 
         self.selected_sq = None
         self.legal_moves_from = []
@@ -1201,6 +1345,14 @@ class CabreChess:
         # Verificar fin
         self.check_game_over()
 
+        # Incremento Fischer después de cada jugada (también la primera), pero
+        # NO en la jugada que termina la partida: los relojes quedan congelados.
+        if self.use_timer and not self.game_over:
+            if mover_color == chess.WHITE:
+                self.time_white += self.time_increment
+            else:
+                self.time_black += self.time_increment
+
         # Actualizar evaluación en modo análisis
         if self.mode == "analysis":
             self.update_eval()
@@ -1215,31 +1367,26 @@ class CabreChess:
             self.try_execute_premove()
 
     def check_game_over(self):
-        if self.board.is_checkmate():
-            winner = "Blancas" if self.board.turn == chess.BLACK else "Negras"
-            self.game_over = True
-            self.game_over_msg = f"mate\n¡Jaque Mate!\n{winner} ganan"
-            self.spawn_particles(self.board.king(chess.WHITE if winner=="Blancas" else chess.BLACK),
-                                  ACCENT)
-        elif self.board.is_stalemate():
-            self.game_over = True
-            self.game_over_msg = "draw\nAhogado\nTablas"
-        elif self.board.is_insufficient_material():
-            self.game_over = True
-            self.game_over_msg = "draw\nMaterial insuficiente\nTablas"
-        elif self.board.is_repetition(3):
-            # Como Lichess: la triple repetición se reclama sola
-            self.game_over = True
-            self.game_over_msg = "draw\nTriple repetición\nTablas"
-        elif self.board.can_claim_fifty_moves():
-            self.game_over = True
-            self.game_over_msg = "draw\nRegla de los 50 movimientos\nTablas"
-        elif self.board.is_seventyfive_moves():
-            self.game_over = True
-            self.game_over_msg = "draw\nRegla de los 75 movimientos\nTablas"
-        elif self.board.is_fivefold_repetition():
-            self.game_over = True
-            self.game_over_msg = "draw\nRepetición\nTablas"
+        end = detect_end(self.board)
+        if end:
+            self.end_game(*end)
+            if end[0] == "checkmate":
+                self.spawn_particles(self.board.king(self.board.turn), ACCENT)
+
+    def end_game(self, termination, result):
+        """ÚNICO punto donde termina una partida: congela relojes y resultado,
+        corta la IA y deja el estado listo para el panel (que se muestra y
+        autoguarda la partida en sync_game_over_panel)."""
+        if self.game_over:
+            return
+        self.game_over = True
+        self.termination = termination
+        self.result = result
+        self.game_over_msg = end_message(termination, result)
+        self.final_times = (self.time_white, self.time_black)
+        self.time_last = time.time()
+        self.cancel_ai_search()
+        self.clear_premove()
 
     def start_ai_search(self):
         """Lanza el cálculo del movimiento de la IA en un hilo aparte
@@ -1322,6 +1469,12 @@ class CabreChess:
         self.pgn_saved_msg = ""
         self.pgn_saved_time = 0
         self.clear_game_over_ui()
+        self.result = "*"
+        self.termination = ""
+        self.final_times = None
+        self.saved_game_id = None
+        self.loaded_game_id = None
+        self.loaded_names = None
         self.time_white = self.time_selected
         self.time_black = self.time_selected
         self.time_last = time.time()
@@ -1457,6 +1610,9 @@ class CabreChess:
             self.toast("No hay movimientos para guardar.")
             return None
         pgn_text, date_str = self.build_pgn()
+        return self.save_pgn_text(pgn_text, date_str)
+
+    def save_pgn_text(self, pgn_text, date_str):
         filename = self.ask_pgn_filename(date_str)
         if filename == "":          # el usuario canceló el diálogo
             return None
@@ -1501,14 +1657,13 @@ class CabreChess:
 
     def build_pgn(self):
         """Arma el texto PGN de la partida actual. Devuelve (pgn_text, date_str)."""
-        white_name, black_name = self.pgn_white, self.pgn_black
-        if self.mode == "vsai":
-            if self.ai_color == chess.BLACK:
-                black_name = "CabreChess AI"
-            else:
-                white_name = "CabreChess AI"
+        white_name, black_name = self.player_names()
+        extra = {}
+        if self.game_over:
+            extra["result"] = self.result
+            extra["termination"] = PGN_TERMINATION.get(self.termination, "normal")
         return build_pgn(self.board, self.move_history_san, self.mode,
-                         white_name, black_name)
+                         white_name, black_name, time_control=self.time_control(), **extra)
 
     def update_eval(self):
         """Calcula evaluación estática para la posición actual."""
@@ -1524,6 +1679,192 @@ class CabreChess:
         self.mode = "menu"
         self.reset_game()
 
+    # ─── PARTIDAS GUARDADAS ─────────────────────────────────────────────────────
+    SAVED_ROWS = 14
+    SAVED_ROW_H = 34
+    SAVED_TOP = 130
+    SAVED_X, SAVED_W = 70, WINDOW_W - 140
+    MODE_NAMES = {"pvp": "2 jugadores", "vsai": "vs IA", "analysis": "Análisis"}
+
+    def open_saved_games(self):
+        self.reset_game()
+        self.mode = "saved"
+        self.saved_sel = None
+        self.saved_scroll = 0
+        self.saved_confirm_delete = None
+        self.refresh_saved_games()
+
+    def refresh_saved_games(self):
+        db = self.get_db()
+        self.saved_games = db.list_games() if db else []
+        if self.saved_sel is not None and self.saved_sel >= len(self.saved_games):
+            self.saved_sel = len(self.saved_games) - 1 if self.saved_games else None
+
+    def selected_saved_game(self):
+        if self.saved_sel is None or not (0 <= self.saved_sel < len(self.saved_games)):
+            return None
+        return self.saved_games[self.saved_sel]
+
+    def saved_buttons(self):
+        specs = [("Abrir en análisis", "open"), ("Exportar PGN", "export"),
+                 ("Borrar", "delete"), ("Volver", "back")]
+        w, gap = 200, 14
+        x0 = WINDOW_W // 2 - (len(specs) * w + (len(specs) - 1) * gap) // 2
+        y = self.SAVED_TOP + self.SAVED_ROWS * self.SAVED_ROW_H + 30
+        return [(label, bid, pygame.Rect(x0 + i * (w + gap), y, w, 44))
+                for i, (label, bid) in enumerate(specs)]
+
+    def saved_row_rect(self, visible_i):
+        return pygame.Rect(self.SAVED_X, self.SAVED_TOP + visible_i * self.SAVED_ROW_H,
+                           self.SAVED_W, self.SAVED_ROW_H - 4)
+
+    @staticmethod
+    def _result_label(game):
+        from .endings import end_title
+        return end_title(game["termination"], game["result"])
+
+    def draw_saved_games(self):
+        title = self.font_xl.render("Partidas guardadas", True, TEXT_BRIGHT)
+        self.screen.blit(title, (WINDOW_W // 2 - title.get_width() // 2, 30))
+        cols = [("Fecha", 10), ("Modo", 175), ("Resultado", 300), ("Apertura", 640)]
+        for name, dx in cols:
+            h = self.font_small.render(name, True, TEXT_DIM)
+            self.screen.blit(h, (self.SAVED_X + dx, self.SAVED_TOP - 26))
+        if not self.saved_games:
+            msg = self.font_med.render("Todavía no hay partidas. Las partidas terminadas se guardan solas.",
+                                       True, TEXT_COLOR)
+            self.screen.blit(msg, (WINDOW_W // 2 - msg.get_width() // 2, self.SAVED_TOP + 60))
+        mx, my = self.mouse_pos()
+        visible = self.saved_games[self.saved_scroll:self.saved_scroll + self.SAVED_ROWS]
+        for i, g in enumerate(visible):
+            idx = self.saved_scroll + i
+            rect = self.saved_row_rect(i)
+            sel = idx == self.saved_sel
+            bg = MOVE_ACTIVE if sel else ((45, 44, 41) if rect.collidepoint(mx, my) else (35, 34, 31))
+            pygame.draw.rect(self.screen, bg, rect, border_radius=5)
+            if sel:
+                pygame.draw.rect(self.screen, ACCENT, rect, 2, border_radius=5)
+            date = g["played_at"].replace("T", " ")[:16]
+            opening = f'{g["eco"]} {g["opening"]}'.strip() or "—"
+            values = [date, self.MODE_NAMES.get(g["mode"], g["mode"]),
+                      self._result_label(g), opening]
+            for (_, dx), val in zip(cols, values):
+                t = self.font_small.render(val, True, TEXT_BRIGHT if sel else TEXT_COLOR)
+                max_w = (cols[cols.index((_, dx)) + 1][1] - dx - 10) if dx != cols[-1][1] else rect.w - dx - 10
+                if t.get_width() > max_w:
+                    while val and self.font_small.size(val + "…")[0] > max_w:
+                        val = val[:-1]
+                    t = self.font_small.render(val + "…", True, TEXT_BRIGHT if sel else TEXT_COLOR)
+                self.screen.blit(t, (rect.x + dx, rect.centery - t.get_height() // 2))
+        if len(self.saved_games) > self.SAVED_ROWS:
+            info = self.font_tiny.render(
+                f"{self.saved_scroll + 1}-{self.saved_scroll + len(visible)} de {len(self.saved_games)}"
+                "  (rueda del mouse / flechas)", True, TEXT_DIM)
+            self.screen.blit(info, (self.SAVED_X, self.SAVED_TOP + self.SAVED_ROWS * self.SAVED_ROW_H + 4))
+        has_sel = self.selected_saved_game() is not None
+        for label, bid, rect in self.saved_buttons():
+            enabled = has_sel or bid == "back"
+            if bid == "delete" and self.saved_confirm_delete is not None:
+                label = "¿Borrar? Click de nuevo"
+            hov = enabled and rect.collidepoint(mx, my)
+            c = DANGER if bid == "delete" else ACCENT
+            pygame.draw.rect(self.screen, c if hov else (50, 49, 46), rect, border_radius=8)
+            ls = self.font_small.render(label, True, BG_COLOR if hov else (TEXT_COLOR if enabled else TEXT_DIM))
+            self.screen.blit(ls, (rect.centerx - ls.get_width() // 2, rect.centery - ls.get_height() // 2))
+        if self.pgn_saved_msg and (time.time() - self.pgn_saved_time) < 3:
+            t = self.font_small.render(self.pgn_saved_msg, True, BG_COLOR)
+            box = pygame.Rect(0, 0, t.get_width() + 24, 30)
+            box.center = (WINDOW_W // 2, WINDOW_H - 30)
+            pygame.draw.rect(self.screen, ACCENT, box, border_radius=6)
+            self.screen.blit(t, (box.x + 12, box.centery - t.get_height() // 2))
+
+    def handle_saved_click(self, pos):
+        for i in range(min(self.SAVED_ROWS, len(self.saved_games) - self.saved_scroll)):
+            if self.saved_row_rect(i).collidepoint(pos):
+                idx = self.saved_scroll + i
+                if idx == self.saved_sel and time.time() - getattr(self, "_saved_click_t", 0) < 0.4:
+                    self.load_saved_game(self.saved_games[idx]["id"])     # doble click
+                    return
+                self.saved_sel = idx
+                self.saved_confirm_delete = None
+                self._saved_click_t = time.time()
+                return
+        for _label, bid, rect in self.saved_buttons():
+            if rect.collidepoint(pos):
+                self.saved_action(bid)
+                return
+
+    def handle_saved_key(self, key):
+        n = len(self.saved_games)
+        if key == pygame.K_ESCAPE:
+            self.saved_action("back")
+        elif key in (pygame.K_DOWN, pygame.K_UP) and n:
+            cur = -1 if self.saved_sel is None else self.saved_sel
+            self.saved_sel = max(0, min(n - 1, cur + (1 if key == pygame.K_DOWN else -1)))
+            if self.saved_sel < self.saved_scroll:
+                self.saved_scroll = self.saved_sel
+            elif self.saved_sel >= self.saved_scroll + self.SAVED_ROWS:
+                self.saved_scroll = self.saved_sel - self.SAVED_ROWS + 1
+        elif key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            self.saved_action("open")
+        elif key == pygame.K_DELETE:
+            self.saved_action("delete")
+
+    def saved_action(self, bid):
+        game = self.selected_saved_game()
+        if bid == "back":
+            self.mode = "menu"
+            return
+        if game is None:
+            return
+        if bid == "open":
+            self.load_saved_game(game["id"])
+        elif bid == "export":
+            date_str = game["played_at"][:10].replace("-", ".")
+            self.save_pgn_text(game["pgn"], date_str)
+        elif bid == "delete":
+            if self.saved_confirm_delete != game["id"]:
+                self.saved_confirm_delete = game["id"]
+                return
+            db = self.get_db()
+            if db and db.delete_game(game["id"]):
+                self.toast("Partida borrada")
+            self.saved_confirm_delete = None
+            self.refresh_saved_games()
+
+    def load_saved_game(self, game_id):
+        """Abre una partida de la base en modo análisis, congelada en su
+        resultado, para revisarla jugada por jugada con el análisis del motor."""
+        import io
+
+        import chess.pgn
+        db = self.get_db()
+        row = db.get_game(game_id) if db else None
+        if row is None:
+            self.toast("No se encontró la partida")
+            return False
+        game = chess.pgn.read_game(io.StringIO(row["pgn"]))
+        if game is None:
+            self.toast("PGN inválido")
+            return False
+        self.start_game("analysis")
+        self.board = game.board()            # respeta [FEN] si no arrancó de la inicial
+        self.loaded_game_id = game_id
+        self._game_over_seen = True          # no abrir panel ni autoguardar
+        for move in game.mainline_moves():
+            if move not in self.board.legal_moves:
+                break
+            self.execute_move(move)
+        self.anim_move = None
+        self.particles = []
+        self.game_over = False                # forzar el resultado guardado
+        self.end_game(row["termination"], row["result"])
+        self._game_over_seen = True
+        self.game_over_panel = False
+        self.review_index = 0 if self.board.move_stack else None
+        self.loaded_names = (row["white"], row["black"])
+        return True
+
     # ─── EVENTOS ────────────────────────────────────────────────────────────────
     def handle_events(self):
         for event in pygame.event.get():
@@ -1534,6 +1875,16 @@ class CabreChess:
                 self.on_resize(event.w, event.h)
             elif event.type == getattr(pygame, "WINDOWSIZECHANGED", -1):
                 self.on_resize(event.x, event.y)
+
+            elif event.type == pygame.KEYDOWN and self.mode == "saved":
+                if event.key == pygame.K_F11:
+                    self.toggle_fullscreen()
+                else:
+                    self.handle_saved_key(event.key)
+
+            elif event.type == pygame.MOUSEWHEEL and self.mode == "saved":
+                self.saved_scroll = max(0, min(max(0, len(self.saved_games) - self.SAVED_ROWS),
+                                               self.saved_scroll - event.y))
 
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_F11 or (
@@ -1595,6 +1946,9 @@ class CabreChess:
 
         if self.mode == "menu":
             self.handle_menu_click(pos)
+            return
+        if self.mode == "saved":
+            self.handle_saved_click(pos)
             return
 
         # Promo
@@ -1790,7 +2144,10 @@ class CabreChess:
         mx, my = pos
         for _label, _icon, action, _color, rect in self.menu_main_buttons():
             if rect.collidepoint(mx, my):
-                self.start_game(action)
+                if action == "saved":
+                    self.open_saved_games()
+                else:
+                    self.start_game(action)
                 return
 
         setters = [
@@ -1822,17 +2179,23 @@ class CabreChess:
     def flag_fall(self, color):
         """Al bando `color` se le acabó el tiempo. Si el rival no tiene
         material para dar mate de ninguna forma, es tablas (regla FIDE 6.9)."""
-        self.game_over = True
-        self.game_over_msg = flag_fall_message(self.board, color)
-        self.cancel_ai_search()
+        if color == chess.WHITE:
+            self.time_white = 0
+        else:
+            self.time_black = 0
+        self.end_game(*flag_end(self.board, color))
 
     # ─── LOOP PRINCIPAL ─────────────────────────────────────────────────────────
     def update(self):
         now = time.time()
         self.sync_game_over_panel()
+        self.request_analysis()
 
         # Temporizador — corre siempre excepto en menú, fin de juego o promoción
-        if (self.use_timer and self.mode != "menu" and
+        if self.game_over and self.final_times is not None:
+            # Defensa extra: con la partida terminada los relojes no se mueven
+            self.time_white, self.time_black = self.final_times
+        elif (self.use_timer and self.mode in ("pvp", "vsai") and
                 not self.game_over and not self.promotion_pending):
             dt = now - self.time_last
             # El reloj del bando que mueve corre siempre, también mientras
