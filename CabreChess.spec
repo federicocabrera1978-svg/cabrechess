@@ -2,10 +2,10 @@
 
 
 a = Analysis(
-    ['cabrechess.py'],
+    ['packaging_entry.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets', 'assets')],
+    datas=[('cabrechess/assets', 'cabrechess/assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -35,6 +35,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['assets/logo/cabrechess.ico'],
+    icon=['cabrechess/assets/logo/cabrechess.ico'],
     version='version_info.txt',
 )

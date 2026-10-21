@@ -1,484 +1,50 @@
-#!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""
-CabreChess - by Federico Cabrera
-Un juego de ajedrez funcional inspirado en Lichess
-
-Copyright (C) 2026 Federico Cabrera
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version. See the LICENSE file for details.
-"""
-
-import pygame
-import chess
-import sys
-import time
+"""Interfaz pygame: clase principal CabreChess."""
 import math
 import random
+import sys
 import threading
+import time
 from pathlib import Path
 
-# ─── CONSTANTES ────────────────────────────────────────────────────────────────
-WINDOW_W, WINDOW_H = 1100, 780
-BOARD_SIZE = 640
-SQUARE_SIZE = BOARD_SIZE // 8
-BOARD_X = 60
-BOARD_Y = 70
+import chess
+import pygame
 
-# Colores Lichess
-BG_COLOR        = (22,  21,  18)
-PANEL_COLOR     = (30,  29,  26)
-LIGHT_SQ        = (240, 217, 181)
-DARK_SQ         = (181, 136,  99)
-HIGHLIGHT_SQ    = (205, 210,  106)
-SELECTED_SQ     = (246, 246, 105)
-LEGAL_DOT       = (0,   0,   0,  80)
-CHECK_SQ        = (220,  50,  50, 180)
-LAST_MOVE       = (170, 162,  58, 180)
-HOVER_COLOR     = (255, 255, 255,  25)
-TEXT_COLOR      = (186, 186, 186)
-TEXT_BRIGHT     = (255, 255, 255)
-TEXT_DIM        = (100, 100, 100)
-ACCENT          = (138, 196,  33)    # verde Lichess
-ACCENT2         = ( 81, 150, 200)    # azul
-DANGER          = (220,  55,  55)
-BORDER_COLOR    = ( 55,  54,  50)
-PREMOVE_SQ      = (200,  80,  80)    # rojo-naranja para premove (igual Lichess)
-PREMOVE_ALPHA   = 170
-MOVE_BG         = ( 38,  37,  34)
-MOVE_ACTIVE     = ( 55,  54,  50)
-PANEL_W         = WINDOW_W - BOARD_X - BOARD_SIZE - 20
-PANEL_X         = BOARD_X + BOARD_SIZE + 16
-
-# Layout del menú principal (filas de opciones)
-MENU_OPT_X      = WINDOW_W // 2 - 200      # columna de etiquetas
-MENU_BTN_X      = WINDOW_W // 2 - 80       # primera columna de botones
-MENU_ROW_Y      = (560, 598, 636)          # dificultad / color / tiempo
-
-# Piezas Unicode
-PIECE_UNICODE = {
-    (chess.KING,   chess.WHITE): '♔',
-    (chess.QUEEN,  chess.WHITE): '♕',
-    (chess.ROOK,   chess.WHITE): '♖',
-    (chess.BISHOP, chess.WHITE): '♗',
-    (chess.KNIGHT, chess.WHITE): '♘',
-    (chess.PAWN,   chess.WHITE): '♙',
-    (chess.KING,   chess.BLACK): '♚',
-    (chess.QUEEN,  chess.BLACK): '♛',
-    (chess.ROOK,   chess.BLACK): '♜',
-    (chess.BISHOP, chess.BLACK): '♝',
-    (chess.KNIGHT, chess.BLACK): '♞',
-    (chess.PAWN,   chess.BLACK): '♟',
-}
-
-# ─── PIEZAS DIBUJADAS EN CÓDIGO (RESPALDO) ──────────────────────────────────────
-# Usadas solo si faltan los PNG de assets/pieces/cburnett/. Se arman a 4x y se
-# reducen con smoothscale (anti-aliasing). Estilo marfil / grafito.
-PIECE_SUPERSAMPLE = 4
-PIECE_STYLE = {
-    # color de pieza: (relleno claro, relleno oscuro, contorno, brillo)
-    chess.WHITE: ((255, 255, 252), (206, 204, 196), (34, 32, 30), (255, 255, 255, 150)),
-    chess.BLACK: ((92, 88, 84), (22, 21, 20), (8, 8, 8), (255, 255, 255, 70)),
-}
-_piece_cache = {}
+from .clock import TIME_INCREMENT, TIME_OPTIONS, flag_fall_message, format_clock
+from .constants import (
+    ACCENT,
+    ACCENT2,
+    BG_COLOR,
+    BOARD_SIZE,
+    BOARD_X,
+    BOARD_Y,
+    BORDER_COLOR,
+    DANGER,
+    DARK_SQ,
+    LAST_MOVE,
+    LIGHT_SQ,
+    MENU_BTN_X,
+    MENU_OPT_X,
+    MENU_ROW_Y,
+    MOVE_ACTIVE,
+    PANEL_COLOR,
+    PANEL_W,
+    PANEL_X,
+    PREMOVE_ALPHA,
+    PREMOVE_SQ,
+    SELECTED_SQ,
+    SQUARE_SIZE,
+    TEXT_BRIGHT,
+    TEXT_COLOR,
+    TEXT_DIM,
+    WINDOW_H,
+    WINDOW_W,
+)
+from .engine import SimpleEngine
+from .pgn import build_pgn
+from .sprites import PIECE_NAMES, load_window_icon, make_piece_shadow, make_piece_sprite
 
 
-def _ellipse(ex, ey, rx, ry, start=0.0, end=2 * math.pi, n=64):
-    return [(ex + rx * math.cos(start + (end - start) * i / n),
-             ey + ry * math.sin(start + (end - start) * i / n))
-            for i in range(n + 1)]
-
-
-def _mirror(cx, pts):
-    return pts + [(2 * cx - x, y) for (x, y) in pts][::-1]
-
-
-def _profile(s, pts):
-    """Perfil simétrico: pts = [(yf, half_f), ...] de arriba hacia abajo."""
-    cx = s / 2
-    left = [(cx - hf * s, yf * s) for (yf, hf) in pts]
-    return _mirror(cx, left)
-
-
-def _base(s, w=0.275):
-    cx = s / 2
-    return (_ellipse(cx, 0.745 * s, w * s, 0.03 * s, math.pi, 2 * math.pi)
-            + _ellipse(cx, 0.815 * s, w * s, 0.035 * s, 0, math.pi))
-
-
-def _band(s, yc, half, ry=0.040):
-    return _ellipse(s / 2, yc * s, half * s, ry * s)
-
-
-def _pawn_parts(s):
-    """Partes del peón (base, cuerpo, collar, cabeza)."""
-    cx = s / 2
-    top_y, bot_y = 0.44 * s, 0.76 * s
-    left, right = [], []
-    for i in range(33):
-        t = i / 32
-        half = (0.078 + 0.165 * t ** 1.9) * s
-        y = top_y + (bot_y - top_y) * t
-        left.append((cx - half, y))
-        right.append((cx + half, y))
-    body = left + _ellipse(cx, bot_y, 0.243 * s, 0.035 * s, 0, math.pi)[::-1] + right[::-1]
-    return [_base(s), body, _band(s, 0.445, 0.160),
-            _ellipse(cx, 0.300 * s, 0.128 * s, 0.128 * s)]
-
-
-def _king_parts(s):
-    cx = s / 2
-    body = _profile(s, [
-        (0.42, 0.095), (0.46, 0.088), (0.52, 0.132), (0.58, 0.112),
-        (0.66, 0.135), (0.71, 0.185), (0.748, 0.235),
-    ])
-    head = _profile(s, [
-        (0.235, 0.045), (0.255, 0.095), (0.295, 0.125), (0.345, 0.122),
-        (0.40, 0.100), (0.43, 0.078),
-    ])
-    cross_v = [
-        (cx - 0.027 * s, 0.050 * s), (cx + 0.027 * s, 0.050 * s),
-        (cx + 0.027 * s, 0.250 * s), (cx - 0.027 * s, 0.250 * s),
-    ]
-    cross_h = [
-        (cx - 0.082 * s, 0.100 * s), (cx + 0.082 * s, 0.100 * s),
-        (cx + 0.082 * s, 0.152 * s), (cx - 0.082 * s, 0.152 * s),
-    ]
-    return [_base(s, 0.285), body, _band(s, 0.425, 0.150), head, cross_v, cross_h]
-
-
-def _queen_parts(s):
-    cx = s / 2
-    body = _profile(s, [
-        (0.40, 0.100), (0.45, 0.090), (0.52, 0.130), (0.60, 0.110),
-        (0.67, 0.140), (0.71, 0.190), (0.748, 0.240),
-    ])
-    head = _profile(s, [
-        (0.305, 0.085), (0.325, 0.140), (0.355, 0.150), (0.39, 0.130),
-    ])
-    crownband = _profile(s, [(0.275, 0.150), (0.305, 0.150)])
-    parts = [_base(s, 0.285), body, _band(s, 0.405, 0.150), head, crownband]
-    offs = (-0.118, -0.059, 0.0, 0.059, 0.118)
-    for ox in offs:
-        tipx = cx + ox * s
-        parts.append([
-            (tipx - 0.030 * s, 0.278 * s),
-            (tipx + 0.030 * s, 0.278 * s),
-            (tipx, 0.205 * s),
-        ])
-    for ox in offs:
-        parts.append(_ellipse(cx + ox * s, 0.198 * s, 0.030 * s, 0.030 * s))
-    return parts
-
-
-def _rook_parts(s):
-    cx = s / 2
-    body = _profile(s, [
-        (0.47, 0.165), (0.51, 0.150), (0.60, 0.150), (0.66, 0.170),
-        (0.71, 0.205), (0.748, 0.250),
-    ])
-    left, right = cx - 0.205 * s, cx + 0.205 * s
-    merlon_top, gap_bot, block_bot = 0.345 * s, 0.395 * s, 0.475 * s
-    n_merlons = 4
-    seg = (right - left) / (2 * n_merlons - 1)
-    battlement = [(left, block_bot), (left, gap_bot)]
-    cur = left
-    for k in range(2 * n_merlons - 1):
-        top = merlon_top if k % 2 == 0 else gap_bot
-        battlement.append((cur, top))
-        battlement.append((cur + seg, top))
-        cur += seg
-    battlement.append((right, block_bot))
-    return [_base(s, 0.285), body, _band(s, 0.505, 0.175), battlement]
-
-
-def _bishop_parts(s):
-    cx = s / 2
-    body = _profile(s, [
-        (0.46, 0.085), (0.52, 0.112), (0.60, 0.118), (0.66, 0.150),
-        (0.71, 0.180), (0.748, 0.215),
-    ])
-    mitre = _profile(s, [
-        (0.175, 0.012), (0.21, 0.058), (0.27, 0.100), (0.33, 0.125),
-        (0.40, 0.112), (0.455, 0.078),
-    ])
-    ball = _ellipse(cx, 0.165 * s, 0.032 * s, 0.032 * s)
-    slit = [
-        (cx - 0.055 * s, 0.285 * s), (cx - 0.030 * s, 0.265 * s),
-        (cx + 0.060 * s, 0.360 * s), (cx + 0.035 * s, 0.380 * s),
-    ]
-    return [_base(s, 0.270), body, _band(s, 0.455, 0.135), mitre, ball,
-            ("outline", slit)]
-
-
-def _knight_parts(s):
-    neck = _profile(s, [
-        (0.58, 0.150), (0.64, 0.170), (0.71, 0.205), (0.748, 0.250),
-    ])
-    # Silueta del caballo mirando a la izquierda
-    pts = [
-        (0.315, 0.705), (0.30, 0.615), (0.285, 0.535), (0.255, 0.49),
-        (0.215, 0.465), (0.175, 0.455), (0.135, 0.455), (0.115, 0.425),
-        (0.115, 0.395), (0.145, 0.375), (0.135, 0.345), (0.175, 0.345),
-        (0.215, 0.335), (0.245, 0.305), (0.265, 0.27), (0.30, 0.235),
-        (0.345, 0.195), (0.375, 0.155), (0.405, 0.205), (0.435, 0.225),
-        (0.465, 0.175), (0.505, 0.205), (0.545, 0.27), (0.58, 0.355),
-        (0.61, 0.455), (0.63, 0.56), (0.64, 0.665), (0.59, 0.705),
-    ]
-    horse = [(x * s, y * s) for (x, y) in pts]
-    eye = _ellipse(0.315 * s, 0.295 * s, 0.019 * s, 0.019 * s)
-    nostril = _ellipse(0.155 * s, 0.405 * s, 0.013 * s, 0.013 * s)
-    return [_base(s, 0.285), neck, horse, ("outline", eye), ("outline", nostril)]
-
-
-_PIECE_PARTS = {
-    chess.PAWN: _pawn_parts,
-    chess.KING: _king_parts,
-    chess.QUEEN: _queen_parts,
-    chess.ROOK: _rook_parts,
-    chess.BISHOP: _bishop_parts,
-    chess.KNIGHT: _knight_parts,
-}
-
-_PIECE_SHINE = {
-    chess.PAWN: [(0.425, 0.225, 0.075, 0.05)],
-    chess.KING: [(0.40, 0.26, 0.07, 0.05)],
-    chess.QUEEN: [(0.40, 0.33, 0.07, 0.05)],
-    chess.ROOK: [(0.37, 0.40, 0.07, 0.05)],
-    chess.BISHOP: [(0.40, 0.27, 0.06, 0.05)],
-    chess.KNIGHT: [(0.33, 0.33, 0.06, 0.05)],
-}
-
-
-def _make_piece_sprite_drawn(piece_type, color, size):
-    """Pieza dibujada por codigo (respaldo si faltan las imagenes cburnett)."""
-    s = size * PIECE_SUPERSAMPLE
-    light, dark, outline, shine = PIECE_STYLE[color]
-    stroke = max(2, round(s * 0.020))
-
-    grad = pygame.Surface((s, s), pygame.SRCALPHA)
-    for x in range(s):
-        t = min(1.0, max(0.0, (x / s - 0.30) / 0.45))
-        c = [round(light[i] + (dark[i] - light[i]) * t) for i in range(3)]
-        pygame.draw.line(grad, (*c, 255), (x, 0), (x, s))
-
-    big = pygame.Surface((s, s), pygame.SRCALPHA)
-    for part in _PIECE_PARTS[piece_type](s):
-        if isinstance(part, tuple) and part[0] == "outline":
-            poly = part[1]
-            pygame.draw.polygon(big, outline, poly)
-            pygame.draw.lines(big, outline, True, poly, stroke)
-            continue
-        poly = part
-        pygame.draw.polygon(big, outline, poly)
-        pygame.draw.lines(big, outline, True, poly, stroke * 2)
-        for p in poly[::4]:
-            pygame.draw.circle(big, outline, p, stroke)
-        mask = pygame.Surface((s, s), pygame.SRCALPHA)
-        pygame.draw.polygon(mask, (255, 255, 255, 255), poly)
-        pygame.draw.lines(mask, (0, 0, 0, 0), True, poly, stroke * 2)
-        fill = grad.copy()
-        fill.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-        big.blit(fill, (0, 0))
-
-    hl = pygame.Surface((s, s), pygame.SRCALPHA)
-    for (hx, hy, hrx, hry) in _PIECE_SHINE.get(piece_type, []):
-        pygame.draw.ellipse(hl, shine, pygame.Rect(hx * s, hy * s, hrx * s, hry * s))
-    big.blit(hl, (0, 0))
-
-    return pygame.transform.smoothscale(big, (size, size))
-
-
-# ─── PIEZAS CBURNETT (LICHESS) ────────────────────────────────────────────────
-# Set de piezas "cburnett" de Colin M.L. Burnett, el mismo que usa Lichess.
-# Licencia GPLv2+ (ver assets/pieces/cburnett/LICENSE). Dominio publico / GPL.
-# Las imagenes viven en assets/pieces/cburnett/*.png (SVG convertidos a 256px).
-def _assets_root():
-    """Carpeta de assets: al lado del .py, o dentro del bundle PyInstaller."""
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS) / "assets" / "pieces" / "cburnett"
-    return Path(__file__).resolve().parent / "assets" / "pieces" / "cburnett"
-
-
-_ASSETS_DIR = _assets_root()
-_LOGO_DIR = _ASSETS_DIR.parent.parent / "logo"
-
-
-def load_window_icon():
-    """Superficie con el ícono de CabreChess, o None si no está el archivo."""
-    for name in ("cabrechess_64.png", "cabrechess.png"):
-        path = _LOGO_DIR / name
-        if path.is_file():
-            try:
-                return pygame.image.load(str(path))
-            except pygame.error:
-                continue
-    return None
-_CBURNETT_FILE = {
-    (chess.KING,   chess.WHITE): "wK.png",
-    (chess.QUEEN,  chess.WHITE): "wQ.png",
-    (chess.ROOK,   chess.WHITE): "wR.png",
-    (chess.BISHOP, chess.WHITE): "wB.png",
-    (chess.KNIGHT, chess.WHITE): "wN.png",
-    (chess.PAWN,   chess.WHITE): "wP.png",
-    (chess.KING,   chess.BLACK): "bK.png",
-    (chess.QUEEN,  chess.BLACK): "bQ.png",
-    (chess.ROOK,   chess.BLACK): "bR.png",
-    (chess.BISHOP, chess.BLACK): "bB.png",
-    (chess.KNIGHT, chess.BLACK): "bN.png",
-    (chess.PAWN,   chess.BLACK): "bP.png",
-}
-_cburnett_raw = {}  # (piece_type, color) -> Surface RGBA a resolucion nativa
-
-
-def _load_cburnett_raw(piece_type, color):
-    key = (piece_type, color)
-    if key in _cburnett_raw:
-        return _cburnett_raw[key]
-    path = _ASSETS_DIR / _CBURNETT_FILE[key]
-    if not path.is_file():
-        _cburnett_raw[key] = None
-        return None
-    img = pygame.image.load(str(path)).convert_alpha()
-    _cburnett_raw[key] = img
-    return img
-
-
-def make_piece_sprite(piece_type, color, size):
-    """Superficie RGBA de size x size con la pieza del color pedido (cacheada).
-
-    Preferencia: PNG del set cburnett (Lichess). Si falta el archivo, se cae
-    al dibujo procedural anterior para no romper el juego.
-    """
-    key = (piece_type, color, size)
-    if key in _piece_cache:
-        return _piece_cache[key]
-    raw = _load_cburnett_raw(piece_type, color)
-    if raw is not None:
-        if raw.get_width() == size and raw.get_height() == size:
-            sprite = raw
-        else:
-            sprite = pygame.transform.smoothscale(raw, (size, size))
-    else:
-        sprite = _make_piece_sprite_drawn(piece_type, color, size)
-    _piece_cache[key] = sprite
-    return sprite
-
-
-def make_piece_shadow(piece_type, size, alpha=110):
-    """Sombra suave de la pieza (silueta negra semitransparente)."""
-    key = ("shadow", piece_type, size, alpha)
-    if key in _piece_cache:
-        return _piece_cache[key]
-    shadow = make_piece_sprite(piece_type, chess.WHITE, size).copy()
-    shadow.fill((0, 0, 0, 255), special_flags=pygame.BLEND_RGBA_MIN)
-    shadow.fill((255, 255, 255, alpha), special_flags=pygame.BLEND_RGBA_MULT)
-    _piece_cache[key] = shadow
-    return shadow
-
-
-def make_pawn_sprite(color, size):
-    """Compat: peón del color pedido."""
-    return make_piece_sprite(chess.PAWN, color, size)
-
-
-def make_pawn_shadow(size, alpha=110):
-    """Compat: sombra del peón."""
-    return make_piece_shadow(chess.PAWN, size, alpha)
-
-
-PIECE_NAMES = {
-    chess.PAWN: 'Peón', chess.KNIGHT: 'Caballo', chess.BISHOP: 'Alfil',
-    chess.ROOK: 'Torre', chess.QUEEN: 'Reina', chess.KING: 'Rey',
-}
-
-# ─── MOTOR DE AJEDREZ (STOCKFISH O MINIMAX) ────────────────────────────────────
-class SimpleEngine:
-    """Motor propio: minimax con poda alfa-beta y tablas pieza-casilla.
-    No usa Stockfish ni ningún motor externo."""
-    PIECE_VALUES = {
-        chess.PAWN: 100, chess.KNIGHT: 320, chess.BISHOP: 330,
-        chess.ROOK: 500, chess.QUEEN: 900, chess.KING: 20000,
-    }
-    PST = {  # Piece-square tables simplificadas
-        chess.PAWN: [
-             0,  0,  0,  0,  0,  0,  0,  0,
-            50, 50, 50, 50, 50, 50, 50, 50,
-            10, 10, 20, 30, 30, 20, 10, 10,
-             5,  5, 10, 25, 25, 10,  5,  5,
-             0,  0,  0, 20, 20,  0,  0,  0,
-             5, -5,-10,  0,  0,-10, -5,  5,
-             5, 10, 10,-20,-20, 10, 10,  5,
-             0,  0,  0,  0,  0,  0,  0,  0,
-        ],
-        chess.KNIGHT: [
-            -50,-40,-30,-30,-30,-30,-40,-50,
-            -40,-20,  0,  0,  0,  0,-20,-40,
-            -30,  0, 10, 15, 15, 10,  0,-30,
-            -30,  5, 15, 20, 20, 15,  5,-30,
-            -30,  0, 15, 20, 20, 15,  0,-30,
-            -30,  5, 10, 15, 15, 10,  5,-30,
-            -40,-20,  0,  5,  5,  0,-20,-40,
-            -50,-40,-30,-30,-30,-30,-40,-50,
-        ],
-    }
-
-    def evaluate(self, board):
-        if board.is_checkmate():
-            return -99999 if board.turn == chess.WHITE else 99999
-        if board.is_stalemate() or board.is_insufficient_material():
-            return 0
-        score = 0
-        for sq in chess.SQUARES:
-            piece = board.piece_at(sq)
-            if piece:
-                val = self.PIECE_VALUES.get(piece.piece_type, 0)
-                pst = self.PST.get(piece.piece_type, [0]*64)
-                idx = chess.square_mirror(sq) if piece.color == chess.WHITE else sq
-                val += pst[idx] if idx < len(pst) else 0
-                score += val if piece.color == chess.WHITE else -val
-        return score
-
-    def minimax(self, board, depth, alpha, beta, maximizing):
-        if depth == 0 or board.is_game_over():
-            return self.evaluate(board), None
-        best_move = None
-        moves = list(board.legal_moves)
-        random.shuffle(moves)
-        if maximizing:
-            best = -math.inf
-            for move in moves:
-                board.push(move)
-                val, _ = self.minimax(board, depth-1, alpha, beta, False)
-                board.pop()
-                if val > best:
-                    best, best_move = val, move
-                alpha = max(alpha, best)
-                if beta <= alpha:
-                    break
-            return best, best_move
-        else:
-            best = math.inf
-            for move in moves:
-                board.push(move)
-                val, _ = self.minimax(board, depth-1, alpha, beta, True)
-                board.pop()
-                if val < best:
-                    best, best_move = val, move
-                beta = min(beta, best)
-                if beta <= alpha:
-                    break
-            return best, best_move
-
-    def get_best_move(self, board, depth=3):
-        maximizing = board.turn == chess.WHITE
-        _, move = self.minimax(board, depth, -math.inf, math.inf, maximizing)
-        return move
-
-
-# ─── CLASE PRINCIPAL ────────────────────────────────────────────────────────────
 class CabreChess:
     def __init__(self):
         pygame.init()
@@ -547,9 +113,9 @@ class CabreChess:
         self.undo_stack = []
 
         # Tiempos
-        self.time_options = [60, 180, 300, 600]   # 1/3/5/10 min en segundos
+        self.time_options = list(TIME_OPTIONS)    # 1/3/5/10 min en segundos
         self.time_selected = 180                   # 3 min por defecto
-        self.time_increment = 3                    # +3s por movimiento
+        self.time_increment = TIME_INCREMENT       # +3s por movimiento
         self.time_white = self.time_selected
         self.time_black = self.time_selected
         self.time_last = time.time()
@@ -937,14 +503,7 @@ class CabreChess:
         # Tiempo - reloj estilo Lichess
         if self.use_timer:
             t = self.time_white if color == chess.WHITE else self.time_black
-            mins = int(t) // 60
-            secs = int(t) % 60
-            tenths = int((t - int(t)) * 10)
-            # Mostrar décimas si queda menos de 1 minuto
-            if t < 60:
-                time_str = f"{mins}:{secs:02d}.{tenths}"
-            else:
-                time_str = f"{mins}:{secs:02d}"
+            time_str = format_clock(t)
             is_active = color == self.board.turn and not self.game_over
             is_low = t < 30
             # Fondo del reloj
@@ -1719,56 +1278,14 @@ class CabreChess:
 
     def build_pgn(self):
         """Arma el texto PGN de la partida actual. Devuelve (pgn_text, date_str)."""
-        import datetime
-        now = datetime.datetime.now()
-        date_str = now.strftime("%Y.%m.%d")
-        mode_tag = {"pvp": "PvP", "vsai": "vs IA", "analysis": "Análisis"}.get(self.mode, "?")
-
-        result = "*"
-        if self.board.is_checkmate():
-            result = "0-1" if self.board.turn == chess.WHITE else "1-0"
-        elif self.board.is_stalemate() or self.board.is_insufficient_material():
-            result = "1/2-1/2"
-
-        white_name = self.pgn_white
-        black_name = self.pgn_black
+        white_name, black_name = self.pgn_white, self.pgn_black
         if self.mode == "vsai":
             if self.ai_color == chess.BLACK:
                 black_name = "CabreChess AI"
             else:
                 white_name = "CabreChess AI"
-
-        lines = [
-            f'[Event "CabreChess — {mode_tag}"]',
-            '[Site "CabreChess by Federico Cabrera"]',
-            f'[Date "{date_str}"]',
-            f'[White "{white_name}"]',
-            f'[Black "{black_name}"]',
-            f'[Result "{result}"]',
-            '',
-        ]
-
-        # Movimientos en formato PGN
-        moves_line = ""
-        for i, san in enumerate(self.move_history_san):
-            if i % 2 == 0:
-                moves_line += f"{i//2 + 1}. "
-            moves_line += san + " "
-        moves_line += result
-        # Partir en líneas de ~80 chars
-        words = moves_line.split()
-        line, pgn_moves = "", []
-        for w in words:
-            if len(line) + len(w) + 1 > 80:
-                pgn_moves.append(line.rstrip())
-                line = w + " "
-            else:
-                line += w + " "
-        if line.strip():
-            pgn_moves.append(line.rstrip())
-        lines += pgn_moves
-
-        return "\n".join(lines) + "\n", date_str
+        return build_pgn(self.board, self.move_history_san, self.mode,
+                         white_name, black_name)
 
     def update_eval(self):
         """Calcula evaluación estática para la posición actual."""
@@ -2035,12 +1552,7 @@ class CabreChess:
         """Al bando `color` se le acabó el tiempo. Si el rival no tiene
         material para dar mate de ninguna forma, es tablas (regla FIDE 6.9)."""
         self.game_over = True
-        rival = not color
-        if self.board.has_insufficient_material(rival):
-            self.game_over_msg = "clock\nTiempo agotado\nTablas (sin material para ganar)"
-        else:
-            winner = "Blancas" if rival == chess.WHITE else "Negras"
-            self.game_over_msg = f"clock\nTiempo agotado\n{winner} ganan"
+        self.game_over_msg = flag_fall_message(self.board, color)
 
     # ─── LOOP PRINCIPAL ─────────────────────────────────────────────────────────
     def update(self):
@@ -2079,11 +1591,6 @@ class CabreChess:
         sys.exit()
 
 
-# ─── ENTRY POINT ────────────────────────────────────────────────────────────────
 def main():
-    """Punto de entrada (también usado por el script `cabrechess` de pyproject)."""
+    """Punto de entrada (`cabrechess`, `python -m cabrechess` y el .exe)."""
     CabreChess().run()
-
-
-if __name__ == "__main__":
-    main()

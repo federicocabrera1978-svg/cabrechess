@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cabrechess"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Ajedrez de escritorio en Python/pygame inspirado en Lichess: IA, análisis, reloj y PGN."
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
@@ -27,7 +27,19 @@ cabrechess = "cabrechess:main"
 Homepage = "https://github.com/federicocabrera1978-svg/cabrechess"
 
 [tool.setuptools]
-py-modules = ["cabrechess"]
+packages = ["cabrechess"]
+
+[tool.setuptools.dynamic]
+version = { attr = "cabrechess.__version__" }
+
+[tool.setuptools.package-data]
+cabrechess = [
+    "assets/logo/*.png",
+    "assets/logo/*.ico",
+    "assets/pieces/cburnett/*.png",
+    "assets/pieces/cburnett/*.svg",
+    "assets/pieces/cburnett/LICENSE",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,4 +1,4 @@
-"""Genera el logo y los íconos de CabreChess en assets/logo/.
+"""Genera el logo y los íconos de CabreChess en cabrechess/assets/logo/.
 
 Uso (solo para desarrollo, necesita Pillow):
 
@@ -6,21 +6,21 @@ Uso (solo para desarrollo, necesita Pillow):
     python tools/make_logo.py
 
 Arma el ícono a partir del caballo blanco del set cburnett
-(assets/pieces/cburnett/wN.png, GPLv2+) sobre un cuadrado redondeado con
+(cabrechess/assets/pieces/cburnett/wN.png, GPLv2+) sobre un cuadrado redondeado con
 casillas en los tonos clásicos de Lichess. Escribe:
 
-- assets/logo/cabrechess.png      ícono 512x512 (README, ventana)
-- assets/logo/cabrechess_64.png   ícono 64x64 (ícono de la ventana de pygame)
-- assets/logo/cabrechess.ico      multi-tamaño 16-256 (ejecutable de Windows)
-- assets/logo/banner.png          logo + nombre para el README
+- cabrechess/assets/logo/cabrechess.png      ícono 512x512 (README, ventana)
+- cabrechess/assets/logo/cabrechess_64.png   ícono 64x64 (ícono de la ventana de pygame)
+- cabrechess/assets/logo/cabrechess.ico      multi-tamaño 16-256 (ejecutable de Windows)
+- cabrechess/assets/logo/banner.png          logo + nombre para el README
 """
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "assets" / "logo"
-KNIGHT = ROOT / "assets" / "pieces" / "cburnett" / "wN.png"
+OUT = ROOT / "cabrechess" / "assets" / "logo"
+KNIGHT = ROOT / "cabrechess" / "assets" / "pieces" / "cburnett" / "wN.png"
 FONT = Path("/usr/share/fonts/truetype/sand-box/google/Montserrat/"
             "Montserrat-VariableFont_wght.ttf")
 
