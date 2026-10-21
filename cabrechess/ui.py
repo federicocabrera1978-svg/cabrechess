@@ -39,7 +39,13 @@ from .constants import (
     WINDOW_H,
     WINDOW_W,
 )
-from .display import clamp_window_size, compute_viewport, window_to_logical
+from .display import (
+    clamp_window_size,
+    compute_viewport,
+    enable_windows_dpi_awareness,
+    initial_window_size,
+    window_to_logical,
+)
 from .engine import SimpleEngine
 from .pgn import build_pgn, default_pgn_path, write_pgn
 from .sprites import PIECE_NAMES, load_window_icon, make_piece_shadow, make_piece_sprite
@@ -47,6 +53,7 @@ from .sprites import PIECE_NAMES, load_window_icon, make_piece_shadow, make_piec
 
 class CabreChess:
     def __init__(self):
+        enable_windows_dpi_awareness()   # antes de crear la ventana
         pygame.init()
         pygame.display.set_caption("CabreChess")
         # El ícono va antes de set_mode para que lo tome la ventana y la barra
@@ -56,10 +63,11 @@ class CabreChess:
             pygame.display.set_icon(icon)
         # Ventana real redimensionable; el juego dibuja en self.screen, una
         # superficie lógica de tamaño fijo que present() escala con letterbox.
-        self.window = pygame.display.set_mode((WINDOW_W, WINDOW_H), pygame.RESIZABLE)
+        start_size = initial_window_size(self.desktop_size())
+        self.window = pygame.display.set_mode(start_size, pygame.RESIZABLE)
         self.screen = pygame.Surface((WINDOW_W, WINDOW_H))
         self.fullscreen = False
-        self.windowed_size = (WINDOW_W, WINDOW_H)
+        self.windowed_size = start_size
         self.clock = pygame.time.Clock()
 
         # Fuentes
@@ -332,7 +340,18 @@ class CabreChess:
             window.blit(pygame.transform.smoothscale(self.screen, (w, h)), (x, y))
         pygame.display.flip()
 
+    @staticmethod
+    def desktop_size():
+        """Resolución del escritorio (monitor principal), o el tamaño lógico."""
+        try:
+            sizes = pygame.display.get_desktop_sizes()
+        except (AttributeError, pygame.error):
+            sizes = []
+        return sizes[0] if sizes and sizes[0][0] > 0 else (WINDOW_W, WINDOW_H)
+
     def on_resize(self, w, h):
+        """VIDEORESIZE / WINDOWSIZECHANGED (también al maximizar). En pygame 2
+        la superficie de la ventana ya cambió de tamaño; solo forzamos el mínimo."""
         if self.fullscreen:
             return
         cw, ch = clamp_window_size(w, h)
@@ -348,7 +367,7 @@ class CabreChess:
             surf = pygame.display.get_surface()
             if surf:
                 self.windowed_size = surf.get_size()
-            self.window = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            self.window = pygame.display.set_mode(self.desktop_size(), pygame.FULLSCREEN)
             self.fullscreen = True
 
     def draw_menu(self):
@@ -989,6 +1008,7 @@ class CabreChess:
         if self.game_over and not self._game_over_seen:
             self._game_over_seen = True
             self.game_over_panel = True
+            self.game_over_time = time.time()
             self.selected_sq = None
             self.legal_moves_from = []
             self.dragging = False
@@ -1184,6 +1204,13 @@ class CabreChess:
         elif self.board.is_insufficient_material():
             self.game_over = True
             self.game_over_msg = "draw\nMaterial insuficiente\nTablas"
+        elif self.board.is_repetition(3):
+            # Como Lichess: la triple repetición se reclama sola
+            self.game_over = True
+            self.game_over_msg = "draw\nTriple repetición\nTablas"
+        elif self.board.can_claim_fifty_moves():
+            self.game_over = True
+            self.game_over_msg = "draw\nRegla de los 50 movimientos\nTablas"
         elif self.board.is_seventyfive_moves():
             self.game_over = True
             self.game_over_msg = "draw\nRegla de los 75 movimientos\nTablas"
@@ -1476,15 +1503,21 @@ class CabreChess:
 
             elif event.type == pygame.VIDEORESIZE:
                 self.on_resize(event.w, event.h)
+            elif event.type == getattr(pygame, "WINDOWSIZECHANGED", -1):
+                self.on_resize(event.x, event.y)
 
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_F11:
+                if event.key == pygame.K_F11 or (
+                        event.key == pygame.K_RETURN and event.mod & pygame.KMOD_ALT):
                     self.toggle_fullscreen()
                 elif event.key == pygame.K_ESCAPE:
                     if self.game_over and self.game_over_panel:
                         self.close_game_over_panel()
                     elif self.game_over and self.review_index is not None:
                         self.review_index = None
+                    elif self.game_over:
+                        # Partida terminada: Esc nunca la borra; reabre el panel
+                        self.game_over_panel = True
                     elif self.premove_from is not None:
                         self.clear_premove()
                     elif self.mode != "menu":
@@ -1697,7 +1730,11 @@ class CabreChess:
                         self.execute_move(move)
                         return
 
+    GAME_OVER_CLICK_GRACE = 0.5   # s: evita que el click de la última jugada toque un botón
+
     def handle_game_over_click(self, pos):
+        if time.time() - getattr(self, "game_over_time", 0) < self.GAME_OVER_CLICK_GRACE:
+            return False
         for _label, action, rect in self.game_over_buttons():
             if rect.collidepoint(pos):
                 action()
@@ -1758,6 +1795,7 @@ class CabreChess:
         material para dar mate de ninguna forma, es tablas (regla FIDE 6.9)."""
         self.game_over = True
         self.game_over_msg = flag_fall_message(self.board, color)
+        self.cancel_ai_search()
 
     # ─── LOOP PRINCIPAL ─────────────────────────────────────────────────────────
     def update(self):
