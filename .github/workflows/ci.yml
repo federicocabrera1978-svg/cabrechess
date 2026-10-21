@@ -55,7 +55,9 @@ jobs:
           which cabrechess
 
   exe:
-    # Verifica que el spec de PyInstaller sigue armando el .exe
+    # Arma los dos formatos de Windows y los sube como artifacts:
+    # - CabreChess-win64: carpeta onedir (recomendado: no se autoextrae a %TEMP%)
+    # - CabreChess-exe:   onefile (un solo .exe)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,9 +68,20 @@ jobs:
         run: |
           pip install -r requirements.txt pyinstaller==6.21.0
           pyinstaller CabreChess.spec
+          pyinstaller --distpath dist-onedir CabreChess-onedir.spec
       - name: Check
         shell: pwsh
-        run: if (!(Test-Path dist/CabreChess.exe)) { exit 1 }
+        run: |
+          if (!(Test-Path dist/CabreChess.exe)) { exit 1 }
+          if (!(Test-Path dist-onedir/CabreChess/CabreChess.exe)) { exit 1 }
+          if (!(Test-Path dist-onedir/CabreChess/_internal/cabrechess/assets/pieces/cburnett/wK.png)) { exit 1 }
+      - name: Upload onedir
+        uses: actions/upload-artifact@v4
+        with:
+          name: CabreChess-win64
+          path: dist-onedir/CabreChess/
+          retention-days: 14
+          if-no-files-found: error
       - name: Upload exe
         uses: actions/upload-artifact@v4
         with:

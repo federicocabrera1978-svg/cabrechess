@@ -19,7 +19,22 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
   `~/Documents/CabreChess/CabreChess_AAAAMMDD_HHMMSS.pgn`.
 
 ### Corregido
+- Builds de Windows sin UPX (fuente común de falsos positivos de antivirus) y
+  nuevo build **onedir** (`CabreChess-win64.zip`, `CabreChess-onedir.spec`)
+  que no se autoextrae a `%TEMP%`; CI y release publican ambos formatos.
+- Test que garantiza que el paquete no lanza subprocesos ni usa red, registro
+  o motores externos (el análisis es 100% en el proceso).
 - Al terminar la partida aparecía un menú que no se podía cerrar.
+- Windows: el proceso declara DPI awareness (no más ventana borrosa o
+  limitada con escalado 125/150%); tamaño inicial según el escritorio;
+  pantalla completa a la resolución del escritorio; también `Alt+Enter`.
+- Se maneja `WINDOWSIZECHANGED` además de `VIDEORESIZE`.
+- `Esc` con la partida terminada ya no vuelve al menú (borraba la partida):
+  reabre el panel.
+- Medio segundo de gracia antes de aceptar clicks en el panel de fin de
+  partida, para que el click de la última jugada no toque "Nueva partida".
+- Triple repetición y regla de 50 movimientos terminan la partida (como Lichess).
+- Si se cae la bandera mientras piensa la IA, se cancela la búsqueda.
 
 ### Cambiado
 - `cabrechess.py` se partió en el paquete `cabrechess/` (`constants`, `engine`,
