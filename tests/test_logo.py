@@ -4,7 +4,7 @@ from pathlib import Path
 
 import cabrechess
 
-LOGO = Path(__file__).resolve().parent.parent / "assets" / "logo"
+LOGO = Path(__file__).resolve().parent.parent / "cabrechess" / "assets" / "logo"
 
 
 def test_archivos_del_logo():

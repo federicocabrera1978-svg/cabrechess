@@ -34,3 +34,38 @@ jobs:
 
       - name: Pytest
         run: python -m pytest -q
+
+  package:
+    # `pip install .` (no editable) debe traer los assets dentro del paquete
+    runs-on: ubuntu-latest
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: pip install .
+      - name: Smoke test desde fuera del repo
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -c "import cabrechess, cabrechess.sprites as s; assert 'site-packages' in cabrechess.__file__; assert (s.ASSETS_DIR / 'pieces/cburnett/wK.png').is_file(); assert (s.ASSETS_DIR / 'logo/cabrechess_64.png').is_file(); print('ok', cabrechess.__version__)"
+          which cabrechess
+
+  exe:
+    # Verifica que el spec de PyInstaller sigue armando el .exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: |
+          pip install -r requirements.txt pyinstaller==6.21.0
+          pyinstaller CabreChess.spec
+      - name: Check
+        shell: pwsh
+        run: if (!(Test-Path dist/CabreChess.exe)) { exit 1 }
