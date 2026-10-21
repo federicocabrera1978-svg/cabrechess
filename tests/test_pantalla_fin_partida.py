@@ -63,6 +63,7 @@ def _mate_del_loco(game):
     for san in ["f3", "e5", "g4", "Qh4#"]:
         game.execute_move(game.board.parse_san(san))
     game.sync_game_over_panel()
+    game.game_over_time = 0      # saltear el período de gracia de los clicks
 
 
 def test_panel_aparece_al_terminar(game):
