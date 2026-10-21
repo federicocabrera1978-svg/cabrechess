@@ -43,6 +43,22 @@ Por Federico Cabrera.
 - **Exportar a PGN** (se abre en Lichess, ChessBase, etc.).
 - Piezas **cburnett** (las de Lichess) y ejecutable para Windows con checksum SHA-256.
 
+## Partidas guardadas y análisis
+
+- **Cada partida terminada se guarda sola** (2 jugadores y vs IA) en una base local
+  SQLite: `%APPDATA%\CabreChess\partidas.db` en Windows, `~/.cabrechess/partidas.db`
+  en Linux/macOS. Guarda PGN, fecha, jugadores, modo, resultado, motivo, apertura (ECO)
+  y control de tiempo. "Guardar PGN" sigue disponible para exportar a mano.
+- **Menú → Partidas guardadas**: lista (fecha, modo, resultado, apertura), abrir en
+  análisis (doble click o Enter), exportar PGN y borrar (pide confirmación).
+- **Análisis**: en el modo Análisis y al revisar una partida terminada se muestran la
+  **mejor jugada** (flecha verde + SAN) y la evaluación. Por defecto lo calcula el motor
+  propio en un hilo del mismo proceso: no lanza programas externos.
+- **Stockfish (opcional, apagado por defecto)**: creá `settings.json` en la misma
+  carpeta de datos con `{"stockfish_path": "C:/ruta/stockfish.exe"}` (o definí la
+  variable `CABRECHESS_STOCKFISH`). Si la ruta no anda, vuelve solo al motor propio.
+  `analysis_depth` (1-5, por defecto 3) ajusta la profundidad del motor propio.
+
 ## Controles
 
 | Acción | Cómo |
@@ -186,6 +202,8 @@ evaluation bar and graph; 1/3/5/10-minute clocks with +3 s increment and proper
 flag-vs-insufficient-material handling; full undo (clocks, captures, eval); premoves,
 drag and drop, promotion picker; PGN export; Lichess cburnett pieces; Windows `.exe`
 built reproducibly by GitHub Actions with a SHA-256 checksum.
+
+**Saved games & analysis:** every finished game is stored automatically in a local SQLite database (`%APPDATA%\\CabreChess\\partidas.db` on Windows, `~/.cabrechess/` elsewhere); browse, open in analysis, export or delete them from *Partidas guardadas*. Analysis shows the best move (arrow + SAN) and evaluation using the built-in engine in-process; Stockfish can optionally be configured via `settings.json` (`stockfish_path`) or `CABRECHESS_STOCKFISH`.
 
 **Controls:** click or drag to move · right-click/`Esc` cancels a premove · `Ctrl+Z` undo ·
 `F` flip board · `R` restart · `F11`/`Alt+Enter` fullscreen (window is resizable) · `Esc` closes the game-over panel / back to menu / quit · after the game, `←` `→` `Home` `End` review the moves.
