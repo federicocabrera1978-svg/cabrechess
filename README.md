@@ -6,6 +6,7 @@
   <a href="https://github.com/federicocabrera1978-svg/cabrechess/actions/workflows/ci.yml"><img src="https://github.com/federicocabrera1978-svg/cabrechess/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licencia-GPL--3.0--or--later-blue.svg" alt="Licencia GPL-3.0-or-later"></a>
   <img src="https://img.shields.io/badge/python-3.9%2B-blue.svg" alt="Python 3.9+">
+  <a href="https://ko-fi.com/federicocabrera"><img src="https://img.shields.io/badge/Ko--fi-apoyar-FF5E5B?logo=ko-fi&logoColor=white" alt="Apoyar en Ko-fi"></a>
 </p>
 
 # CabreChess
@@ -145,6 +146,11 @@ cabrechess/
   Ver `cabrechess/assets/pieces/cburnett/LICENSE`. El logo usa el caballo de ese set.
 - Código: **GPL-3.0-or-later**. Ver [LICENSE](LICENSE).
 
+## Apoyar el proyecto
+
+CabreChess es gratis y de código abierto. Si te gusta y querés bancar su desarrollo,
+podés invitarme un café en [Ko-fi](https://ko-fi.com/federicocabrera). ☕
+
 ---
 
 ## English
@@ -173,3 +179,6 @@ cabrechess          # or, without installing: python -m cabrechess
 (headless, SDL dummy driver). Windows builds are in [Releases](../../releases).
 
 License: GPL-3.0-or-later. Pieces: cburnett by Colin M.L. Burnett (GPLv2+).
+
+**Support:** CabreChess is free and open source. If you enjoy it, you can buy me a coffee
+on [Ko-fi](https://ko-fi.com/federicocabrera). ☕
