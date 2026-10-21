@@ -5,7 +5,6 @@ import random
 import sys
 import threading
 import time
-from pathlib import Path
 
 import chess
 import pygame
@@ -40,8 +39,9 @@ from .constants import (
     WINDOW_H,
     WINDOW_W,
 )
+from .display import clamp_window_size, compute_viewport, window_to_logical
 from .engine import SimpleEngine
-from .pgn import build_pgn
+from .pgn import build_pgn, default_pgn_path, write_pgn
 from .sprites import PIECE_NAMES, load_window_icon, make_piece_shadow, make_piece_sprite
 
 
@@ -54,7 +54,12 @@ class CabreChess:
         icon = load_window_icon()
         if icon is not None:
             pygame.display.set_icon(icon)
-        self.screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
+        # Ventana real redimensionable; el juego dibuja en self.screen, una
+        # superficie lógica de tamaño fijo que present() escala con letterbox.
+        self.window = pygame.display.set_mode((WINDOW_W, WINDOW_H), pygame.RESIZABLE)
+        self.screen = pygame.Surface((WINDOW_W, WINDOW_H))
+        self.fullscreen = False
+        self.windowed_size = (WINDOW_W, WINDOW_H)
         self.clock = pygame.time.Clock()
 
         # Fuentes
@@ -72,6 +77,9 @@ class CabreChess:
         self.promotion_pending = None
         self.promotion_sq = None
         self.game_over = False
+        self.game_over_panel = False   # panel de fin de partida visible
+        self._game_over_seen = False
+        self.review_index = None       # None = posición actual; n = tras n jugadas
         self.game_over_msg = ""
         self.hover_sq = None
         self.dragging = False
@@ -298,7 +306,50 @@ class CabreChess:
         else:
             self.draw_game()
 
+        self.present()
+
+    # ─── VENTANA / ESCALADO ─────────────────────────────────────────────────────
+    def viewport(self):
+        surf = pygame.display.get_surface()
+        size = surf.get_size() if surf else (WINDOW_W, WINDOW_H)
+        return compute_viewport(*size)
+
+    def to_logical(self, pos):
+        return window_to_logical(pos, self.viewport())
+
+    def mouse_pos(self):
+        """Posición del mouse en coordenadas lógicas del juego."""
+        return self.to_logical(pygame.mouse.get_pos())
+
+    def present(self):
+        """Escala la superficie lógica a la ventana (con barras negras)."""
+        window = pygame.display.get_surface()
+        scale, x, y, w, h = self.viewport()
+        if (w, h) == (WINDOW_W, WINDOW_H) and (x, y) == (0, 0):
+            window.blit(self.screen, (0, 0))
+        else:
+            window.fill((0, 0, 0))
+            window.blit(pygame.transform.smoothscale(self.screen, (w, h)), (x, y))
         pygame.display.flip()
+
+    def on_resize(self, w, h):
+        if self.fullscreen:
+            return
+        cw, ch = clamp_window_size(w, h)
+        if (cw, ch) != (w, h):
+            self.window = pygame.display.set_mode((cw, ch), pygame.RESIZABLE)
+        self.windowed_size = (cw, ch)
+
+    def toggle_fullscreen(self):
+        if self.fullscreen:
+            self.window = pygame.display.set_mode(self.windowed_size, pygame.RESIZABLE)
+            self.fullscreen = False
+        else:
+            surf = pygame.display.get_surface()
+            if surf:
+                self.windowed_size = surf.get_size()
+            self.window = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            self.fullscreen = True
 
     def draw_menu(self):
         # Fondo con patrón de tablero sutil
@@ -320,7 +371,7 @@ class CabreChess:
         self.screen.blit(king_surf, (WINDOW_W//2 - king_surf.get_width()//2, 185))
 
         # Botones
-        mx, my = pygame.mouse.get_pos()
+        mx, my = self.mouse_pos()
         for label, icon, _action, color, rect in self.menu_main_buttons():
             hovered = rect.collidepoint(mx, my)
             bg = (45, 44, 41) if hovered else (35, 34, 31)
@@ -387,6 +438,25 @@ class CabreChess:
         self.screen.blit(v, (WINDOW_W//2 - v.get_width()//2, WINDOW_H - 30))
 
     def draw_game(self):
+        if self.review_index is None:
+            self._draw_game()
+            return
+        # Modo revisión: dibujar la posición tras review_index jugadas
+        live_board, live_last = self.board, self.last_move
+        self.board = self.review_board()
+        self.last_move = self.board.peek() if self.board.move_stack else None
+        try:
+            self._draw_game()
+        finally:
+            self.board, self.last_move = live_board, live_last
+
+    def review_board(self):
+        board = self.board.root()
+        for move in self.board.move_stack[:self.review_index]:
+            board.push(move)
+        return board
+
+    def _draw_game(self):
         # Barra de evaluación (solo en modo análisis)
         if self.mode == "analysis":
             self.draw_eval_bar()
@@ -428,8 +498,10 @@ class CabreChess:
         self.draw_player_panel(not top_color, BOARD_X, BOARD_Y + BOARD_SIZE + 10)
 
         # Overlay fin de juego
-        if self.game_over:
+        if self.game_over and self.game_over_panel:
             self.draw_game_over()
+        elif self.review_index is not None:
+            self.draw_review_bar()
 
         # Thinking indicator
         if self.ai_thinking:
@@ -692,7 +764,7 @@ class CabreChess:
         self.screen.blit(title, (WINDOW_W//2 - title.get_width()//2, py - 5))
 
         color = self.board.turn
-        mx, my = pygame.mouse.get_pos()
+        mx, my = self.mouse_pos()
         for i, pt in enumerate(pieces):
             bx, by = px, py + 30 + i*ph
             brect = pygame.Rect(bx, by, pw, ph - 8)
@@ -716,16 +788,22 @@ class CabreChess:
         self.screen.blit(title, (PANEL_X + 10, BOARD_Y + 10))
 
         # Movimientos en pares
-        clip_rect = pygame.Rect(PANEL_X + 5, BOARD_Y + 30, PANEL_W - 20, BOARD_SIZE - 80)
+        list_h = BOARD_SIZE - (140 if self.game_over and not self.game_over_panel else 80)
+        clip_rect = pygame.Rect(PANEL_X + 5, BOARD_Y + 30, PANEL_W - 20, list_h)
         self.screen.set_clip(clip_rect)
 
         row_h = 24
         visible_rows = (clip_rect.height) // row_h
         total_rows = (len(self.move_history_san) + 1) // 2 + 1
 
-        # Auto-scroll al final
+        # Auto-scroll para que se vea la jugada activa (la última, o la
+        # que se está revisando)
         if total_rows > visible_rows:
-            self.history_scroll = max(0, total_rows - visible_rows)
+            active_row = max(0, self.active_ply()) // 2
+            self.history_scroll = max(0, min(total_rows - visible_rows,
+                                             active_row - visible_rows + 2))
+        else:
+            self.history_scroll = 0
 
         for i in range(0, len(self.move_history_san), 2):
             row = i // 2
@@ -739,7 +817,7 @@ class CabreChess:
 
             # Jugada blanca
             if i < len(self.move_history_san):
-                is_last = i == len(self.move_history_san) - 1
+                is_last = i == self.active_ply()
                 bg = MOVE_ACTIVE if is_last else None
                 if bg:
                     pygame.draw.rect(self.screen, bg,
@@ -750,7 +828,7 @@ class CabreChess:
 
             # Jugada negra
             if i+1 < len(self.move_history_san):
-                is_last = i+1 == len(self.move_history_san) - 1
+                is_last = i+1 == self.active_ply()
                 bg = MOVE_ACTIVE if is_last else None
                 if bg:
                     pygame.draw.rect(self.screen, bg,
@@ -771,7 +849,7 @@ class CabreChess:
             ("menu",  TEXT_COLOR),
         ]
         bw = (PANEL_W - 20) // len(buttons)
-        mx, my = pygame.mouse.get_pos()
+        mx, my = self.mouse_pos()
         for i, (icon, color) in enumerate(buttons):
             bx = PANEL_X + 5 + i * bw
             by = btn_y
@@ -812,12 +890,27 @@ class CabreChess:
         if self.mode == "analysis" and len(self.eval_history) > 1:
             self.draw_eval_graph()
 
+    GAME_OVER_PANEL = (460, 300)
+
+    def game_over_buttons(self):
+        """Botones del panel de fin de partida: (etiqueta, acción, rect)."""
+        pw, ph = self.GAME_OVER_PANEL
+        py = WINDOW_H//2 - ph//2
+        specs = [("Guardar PGN", self.save_pgn), ("Revisar partida", self.start_review),
+                 ("Nueva partida", self.reset_game), ("Cerrar", self.close_game_over_panel)]
+        out = []
+        for i, (label, action) in enumerate(specs):
+            col, row = i % 2, i // 2
+            rect = pygame.Rect(WINDOW_W//2 - 205 + col*210, py + 160 + row*54, 200, 44)
+            out.append((label, action, rect))
+        return out
+
     def draw_game_over(self):
         overlay = pygame.Surface((WINDOW_W, WINDOW_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
+        overlay.fill((0, 0, 0, 140))
         self.screen.blit(overlay, (0, 0))
 
-        pw, ph = 440, 240
+        pw, ph = self.GAME_OVER_PANEL
         px = WINDOW_W//2 - pw//2
         py = WINDOW_H//2 - ph//2
         panel_rect = pygame.Rect(px, py, pw, ph)
@@ -836,15 +929,75 @@ class CabreChess:
             sub_surf = self.font_med.render(lines[2], True, TEXT_COLOR)
             self.screen.blit(sub_surf, (WINDOW_W//2 - sub_surf.get_width()//2, py + 115))
 
-        mx, my = pygame.mouse.get_pos()
-        for i, (label, _action) in enumerate([("Nueva Partida", self.reset_game), ("Menú", self.go_menu)]):
-            bx, by = WINDOW_W//2 - 180 + i*190, py + 160
-            brect = pygame.Rect(bx, by, 170, 44)
+        mx, my = self.mouse_pos()
+        for i, (label, _action, brect) in enumerate(self.game_over_buttons()):
             hov = brect.collidepoint(mx, my)
-            c = ACCENT if i==0 else ACCENT2
-            pygame.draw.rect(self.screen, c if hov else (50,49,46), brect, border_radius=8)
+            c = ACCENT if i == 2 else ACCENT2
+            pygame.draw.rect(self.screen, c if hov else (50, 49, 46), brect, border_radius=8)
             ls = self.font_med.render(label, True, BG_COLOR if hov else TEXT_COLOR)
-            self.screen.blit(ls, (bx + 85 - ls.get_width()//2, by + 12))
+            self.screen.blit(ls, (brect.centerx - ls.get_width()//2, brect.y + 12))
+
+        hint = self.font_tiny.render("Esc: cerrar y ver el tablero", True, TEXT_DIM)
+        self.screen.blit(hint, (WINDOW_W//2 - hint.get_width()//2, py + ph - 22))
+
+    # ─── REVISIÓN DE LA PARTIDA TERMINADA ───────────────────────────────────────
+    def review_buttons(self):
+        """Barra de navegación (fin de partida, panel cerrado): (id, rect)."""
+        y = BOARD_Y + BOARD_SIZE - 88
+        ids = ["first", "prev", "next", "last", "result"]
+        widths = [40, 40, 40, 40, 110]
+        out, x = [], PANEL_X + 8
+        for bid, w in zip(ids, widths):
+            out.append((bid, pygame.Rect(x, y, w, 32)))
+            x += w + 6
+        return out
+
+    def draw_review_bar(self):
+        labels = {"first": "|<", "prev": "<", "next": ">", "last": ">|", "result": "Resultado"}
+        mx, my = self.mouse_pos()
+        for bid, rect in self.review_buttons():
+            hov = rect.collidepoint(mx, my)
+            pygame.draw.rect(self.screen, (50, 49, 46) if hov else (38, 37, 34), rect, border_radius=6)
+            ls = self.font_small.render(labels[bid], True, TEXT_BRIGHT if hov else TEXT_COLOR)
+            self.screen.blit(ls, (rect.centerx - ls.get_width()//2, rect.centery - ls.get_height()//2))
+        n = len(self.move_history_san)   # self.board puede ser la posición revisada
+        cur = n if self.review_index is None else self.review_index
+        info = self.font_tiny.render(f"Jugada {cur}/{n}  (\u2190 \u2192 Inicio Fin)", True, TEXT_DIM)
+        self.screen.blit(info, (PANEL_X + 10, BOARD_Y + BOARD_SIZE - 104))
+
+    def active_ply(self):
+        """Índice (0-based) de la jugada resaltada en la lista."""
+        n = len(self.move_history_san)
+        return (n if self.review_index is None else self.review_index) - 1
+
+    def review_step(self, delta=None, to=None):
+        n = len(self.board.move_stack)
+        cur = n if self.review_index is None else self.review_index
+        new = to if to is not None else cur + delta
+        new = max(0, min(n, new))
+        self.review_index = None if new == n else new
+
+    def start_review(self):
+        self.game_over_panel = False
+        self.review_index = None   # arranca en la posición final
+
+    def close_game_over_panel(self):
+        self.game_over_panel = False
+
+    def sync_game_over_panel(self):
+        """Muestra el panel una sola vez cuando termina la partida."""
+        if self.game_over and not self._game_over_seen:
+            self._game_over_seen = True
+            self.game_over_panel = True
+            self.selected_sq = None
+            self.legal_moves_from = []
+            self.dragging = False
+            self.drag_piece = None
+
+    def clear_game_over_ui(self):
+        self.game_over_panel = False
+        self._game_over_seen = False
+        self.review_index = None
 
     def draw_thinking(self):
         elapsed = time.time() - self.ai_think_start
@@ -1118,6 +1271,7 @@ class CabreChess:
         self.eval_history = []
         self.pgn_saved_msg = ""
         self.pgn_saved_time = 0
+        self.clear_game_over_ui()
         self.time_white = self.time_selected
         self.time_black = self.time_selected
         self.time_last = time.time()
@@ -1150,6 +1304,7 @@ class CabreChess:
         self.particles = []
         self.game_over = False
         self.game_over_msg = ""
+        self.clear_game_over_ui()
         self.time_last = time.time()
         if self.mode == "analysis":
             self.update_eval()
@@ -1240,23 +1395,39 @@ class CabreChess:
         self.screen.blit(lbl, (gx + 2, gy - 12))
 
     def save_pgn(self):
-        """Guarda la partida actual en formato PGN (con diálogo de archivo)."""
-        import tkinter
-        import tkinter.filedialog
-        import tkinter.messagebox
+        """Guarda la partida en PGN. Usa el diálogo de archivo de tkinter y, si
+        no está disponible, guarda en la carpeta por defecto (~/Documents/CabreChess)."""
         if not self.move_history_san:
-            try:
-                root = tkinter.Tk()
-                root.withdraw()
-                tkinter.messagebox.showinfo("CabreChess", "No hay movimientos para guardar.")
-                root.destroy()
-            except tkinter.TclError:
-                # Sin display / Tk no disponible: no hay a quién avisar
-                pass
-            return
-
+            self.toast("No hay movimientos para guardar.")
+            return None
         pgn_text, date_str = self.build_pgn()
+        filename = self.ask_pgn_filename(date_str)
+        if filename == "":          # el usuario canceló el diálogo
+            return None
+        if filename is None:        # sin tkinter / sin display: ruta por defecto
+            filename = default_pgn_path()
+        try:
+            path = write_pgn(pgn_text, filename)
+        except OSError as e:
+            self.toast(f"No se pudo guardar: {e.strerror or e}")
+            return None
+        self.toast(f"Guardado: {path.parent.name}/{path.name}")
+        return path
 
+    def toast(self, msg):
+        self.pgn_saved_msg = msg
+        self.pgn_saved_time = time.time()
+
+    def ask_pgn_filename(self, date_str):
+        """Diálogo "Guardar como". Devuelve la ruta elegida, "" si se canceló,
+        o None si tkinter no está disponible."""
+        try:
+            import tkinter
+            import tkinter.filedialog
+        except ImportError:
+            return None
+        if self.fullscreen:         # el diálogo no se ve encima de pantalla completa
+            self.toggle_fullscreen()
         try:
             root = tkinter.Tk()
             root.withdraw()
@@ -1268,13 +1439,9 @@ class CabreChess:
                 title="Guardar partida PGN",
             )
             root.destroy()
-            if filename:
-                with open(filename, "w", encoding="utf-8") as f:
-                    f.write(pgn_text)
-                self.pgn_saved_msg = f"Guardado: {Path(filename).name}"
-                self.pgn_saved_time = time.time()
-        except (tkinter.TclError, OSError) as e:
-            print(f"Error guardando PGN: {e}")
+        except tkinter.TclError:
+            return None
+        return filename or ""
 
     def build_pgn(self):
         """Arma el texto PGN de la partida actual. Devuelve (pgn_text, date_str)."""
@@ -1307,9 +1474,18 @@ class CabreChess:
             if event.type == pygame.QUIT:
                 return False
 
+            elif event.type == pygame.VIDEORESIZE:
+                self.on_resize(event.w, event.h)
+
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    if self.premove_from is not None:
+                if event.key == pygame.K_F11:
+                    self.toggle_fullscreen()
+                elif event.key == pygame.K_ESCAPE:
+                    if self.game_over and self.game_over_panel:
+                        self.close_game_over_panel()
+                    elif self.game_over and self.review_index is not None:
+                        self.review_index = None
+                    elif self.premove_from is not None:
                         self.clear_premove()
                     elif self.mode != "menu":
                         self.go_menu()
@@ -1321,10 +1497,19 @@ class CabreChess:
                     self.reset_game()
                 elif event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL):
                     self.undo_move()
+                elif self.game_over and not self.game_over_panel:
+                    if event.key == pygame.K_LEFT:
+                        self.review_step(-1)
+                    elif event.key == pygame.K_RIGHT:
+                        self.review_step(1)
+                    elif event.key == pygame.K_HOME:
+                        self.review_step(to=0)
+                    elif event.key == pygame.K_END:
+                        self.review_index = None
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    self.handle_click(event.pos)
+                    self.handle_click(self.to_logical(event.pos))
                 elif event.button == 3:   # click derecho cancela premove
                     self.clear_premove()
                     self.selected_sq = None
@@ -1332,12 +1517,13 @@ class CabreChess:
 
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1 and self.dragging:
-                    self.handle_drop(event.pos)
+                    self.handle_drop(self.to_logical(event.pos))
 
             elif event.type == pygame.MOUSEMOTION:
+                pos = self.to_logical(event.pos)
                 if self.dragging:
-                    self.drag_pos = event.pos
-                mx, my = event.pos
+                    self.drag_pos = pos
+                mx, my = pos
                 self.hover_sq = self.pixel_to_sq(mx, my)
 
         return True
@@ -1354,9 +1540,12 @@ class CabreChess:
             self.handle_promotion_click(pos)
             return
 
-        # Game over buttons
-        if self.game_over:
+        # Panel de fin de partida
+        if self.game_over and self.game_over_panel:
             self.handle_game_over_click(pos)
+            return
+        # Partida terminada, panel cerrado: barra de revisión
+        if self.game_over and self.handle_review_click(pos):
             return
 
         # Botones del panel
@@ -1372,6 +1561,10 @@ class CabreChess:
             if r.collidepoint(mx, my):
                 action()
                 return
+
+        # Con la partida terminada el tablero es solo para mirar
+        if self.game_over:
+            return
 
         sq = self.pixel_to_sq(mx, my)
         if sq is None:
@@ -1505,15 +1698,27 @@ class CabreChess:
                         return
 
     def handle_game_over_click(self, pos):
-        mx, my = pos
-        ph = 240
-        py = WINDOW_H//2 - ph//2
-        for i, (_label, action) in enumerate([("Nueva Partida", self.reset_game), ("Menú", self.go_menu)]):
-            bx, by = WINDOW_W//2 - 180 + i*190, py + 160
-            brect = pygame.Rect(bx, by, 170, 44)
-            if brect.collidepoint(mx, my):
+        for _label, action, rect in self.game_over_buttons():
+            if rect.collidepoint(pos):
                 action()
-                return
+                return True
+        return False
+
+    def handle_review_click(self, pos):
+        for bid, rect in self.review_buttons():
+            if rect.collidepoint(pos):
+                if bid == "first":
+                    self.review_step(to=0)
+                elif bid == "prev":
+                    self.review_step(-1)
+                elif bid == "next":
+                    self.review_step(1)
+                elif bid == "last":
+                    self.review_index = None
+                else:
+                    self.game_over_panel = True
+                return True
+        return False
 
     def handle_menu_click(self, pos):
         mx, my = pos
@@ -1557,6 +1762,7 @@ class CabreChess:
     # ─── LOOP PRINCIPAL ─────────────────────────────────────────────────────────
     def update(self):
         now = time.time()
+        self.sync_game_over_panel()
 
         # Temporizador — corre siempre excepto en menú, fin de juego o promoción
         if (self.use_timer and self.mode != "menu" and
