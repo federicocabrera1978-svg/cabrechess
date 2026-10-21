@@ -68,16 +68,22 @@ def test_deshacer_restaura_capturas_y_relojes(game):
     assert len(game.undo_stack) == 2
 
 
-def test_deshacer_borra_premove_y_fin_de_partida(game):
+def test_deshacer_borra_premove(game):
+    game.start_game("pvp")
+    jugar(game, "e4", "e5")
+    game.premove_from, game.premove_to = chess.E2, chess.E4
+    game.undo_move()
+    assert game.premove_from is None and game.premove_to is None
+
+
+def test_deshacer_tras_el_mate_no_reabre_la_partida(game):
     game.start_game("pvp")
     jugar(game, "f3", "e5", "g4", "Qh4#")
     assert game.game_over
-    game.premove_from, game.premove_to = chess.E2, chess.E4
+    msg = game.game_over_msg
     game.undo_move()
-    assert not game.game_over and game.game_over_msg == ""
-    assert game.premove_from is None and game.premove_to is None
-    assert game.board.fen() == chess.Board(
-        "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq g3 0 2").fen()
+    assert game.game_over and game.game_over_msg == msg
+    assert len(game.board.move_stack) == 4
 
 
 def test_deshacer_en_analisis_restaura_evaluacion(game):

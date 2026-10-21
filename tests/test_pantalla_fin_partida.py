@@ -70,7 +70,7 @@ def test_panel_aparece_al_terminar(game):
     _mate_del_loco(game)
     assert game.game_over and game.game_over_panel
     labels = [b[0] for b in game.game_over_buttons()]
-    assert labels == ["Guardar PGN", "Revisar partida", "Nueva partida", "Cerrar"]
+    assert labels == ["Guardar PGN", "Revisar / Analizar", "Nueva partida", "Cerrar"]
 
 
 def test_cerrar_panel_deja_ver_el_tablero(game):
@@ -124,15 +124,6 @@ def test_nueva_partida_desde_el_panel(game):
     game.handle_click(rect.center)
     assert not game.game_over and not game.game_over_panel
     assert game.board.fen() == chess.Board().fen()
-
-
-def test_deshacer_tras_el_mate_reabre_la_partida(game):
-    _mate_del_loco(game)
-    game.undo_move()
-    assert not game.game_over and not game.game_over_panel
-    game.execute_move(game.board.parse_san("Qh4#"))
-    game.sync_game_over_panel()
-    assert game.game_over_panel
 
 
 # ─── Guardar PGN ───────────────────────────────────────────────────────────────
