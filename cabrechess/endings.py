@@ -13,12 +13,20 @@ _TEXTS = {
     "fifty":        ("draw",  "Tablas por la regla de 50 movimientos"),
     "fivefold":     ("draw",  "Tablas por quíntuple repetición"),
     "seventyfive":  ("draw",  "Tablas por la regla de 75 movimientos"),
+    "resign":       ("flag",  "{g} por abandono"),
+    "agreement":    ("draw",  "Tablas por acuerdo"),
 }
 _SUBTITLES = {
     "timeout_draw": "Se acabó el tiempo, pero al rival no le alcanza el material",
 }
 # Valores estándar del tag PGN [Termination]
 PGN_TERMINATION = {"timeout": "time forfeit", "timeout_draw": "time forfeit"}
+
+# La IA acepta tablas si, desde su lado, va perdiendo por al menos esto
+# (centipeones), o si la posición está pareja y ya se jugó bastante.
+AI_DRAW_LOSING_CP = 100
+AI_DRAW_EVEN_CP = 30
+AI_DRAW_EVEN_MIN_MOVE = 30
 
 
 def winner_text(result):
@@ -65,3 +73,23 @@ def flag_end(board, flagged_color):
     if board.has_insufficient_material(rival):
         return "timeout_draw", "1/2-1/2"
     return "timeout", ("1-0" if rival == chess.WHITE else "0-1")
+
+
+def resign_end(resigning_color):
+    """(terminación, resultado) cuando abandona `resigning_color`."""
+    return "resign", ("0-1" if resigning_color == chess.WHITE else "1-0")
+
+
+def color_name(color):
+    return "las blancas" if color == chess.WHITE else "las negras"
+
+
+def ai_accepts_draw(eval_white_cp, ai_color, fullmove_number):
+    """¿La IA acepta una oferta de tablas?
+    `eval_white_cp` es la evaluación en centipeones desde las blancas.
+    Acepta si va perdiendo, o si la posición está pareja a partir de la
+    jugada AI_DRAW_EVEN_MIN_MOVE. Si va ganando, nunca."""
+    ai_cp = eval_white_cp if ai_color == chess.WHITE else -eval_white_cp
+    if ai_cp <= -AI_DRAW_LOSING_CP:
+        return True
+    return abs(ai_cp) <= AI_DRAW_EVEN_CP and fullmove_number >= AI_DRAW_EVEN_MIN_MOVE

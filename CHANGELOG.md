@@ -6,6 +6,18 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Abandonar y tablas
+- Botones **Abandonar** (bandera, con confirmación) y **Ofrecer tablas** (½) en
+  el panel, solo durante una partida vs IA o de 2 jugadores.
+- Contra la IA, la oferta se acepta si la IA va perdiendo por 1 peón o más, o si
+  la posición está pareja (±0,3) desde la jugada 30; si no, "La IA rechaza las
+  tablas". En 2 jugadores, el rival acepta o rechaza en un diálogo.
+- Una oferta por jugada: después de un rechazo hay que mover para volver a ofrecer.
+- Nuevos carteles "Ganan las blancas/negras por abandono" y "Tablas por acuerdo";
+  se guardan en la base de partidas y en el PGN con el resultado correcto.
+- Los botones del panel tienen una sola definición para dibujar y para los clicks
+  (antes estaban duplicados).
+
 ### Sonidos
 - **Sonidos** al mover, capturar, enrocar, dar jaque y al terminar la partida
   (mate, ahogado, tiempo o tablas), más un aviso cuando a tu reloj le quedan

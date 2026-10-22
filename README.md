@@ -35,6 +35,9 @@ Por Federico Cabrera.
 - **Modo análisis** con barra y gráfico de evaluación.
 - **Reloj** de 1, 3, 5 o 10 minutos con +3 s de incremento. Si se te cae la bandera
   y al rival no le alcanza el material para ganar, son tablas (como en el reglamento).
+- **Abandonar y ofrecer tablas** (botones de la bandera y ½ del panel). Contra la IA, acepta
+  tablas solo si va perdiendo o si la posición está pareja desde la jugada 30;
+  en 2 jugadores responde el rival.
 - **Deshacer** completo: devuelve también los relojes, las piezas capturadas y la evaluación.
 - **Premoves**, arrastrar y soltar, resaltado de jugadas legales y de la última jugada,
   promoción con selector.
@@ -67,6 +70,8 @@ Por Federico Cabrera.
 | Premove | Mover una pieza propia mientras le toca al rival |
 | Cancelar premove | Click derecho o `Esc` |
 | Deshacer | `Ctrl+Z` o el botón ← |
+| Abandonar | Botón de la bandera (pide confirmación) |
+| Ofrecer tablas | Botón ½ (una oferta por jugada; `Esc` cierra el diálogo) |
 | Girar el tablero | `F` |
 | Activar / silenciar el sonido | `M` (se recuerda para la próxima vez) |
 | Reiniciar la partida | `R` |

@@ -48,7 +48,15 @@ from .display import (
 )
 from .analysis import Analyzer
 from .database import GameDB
-from .endings import PGN_TERMINATION, detect_end, end_message, flag_end
+from .endings import (
+    PGN_TERMINATION,
+    ai_accepts_draw,
+    color_name,
+    detect_end,
+    end_message,
+    flag_end,
+    resign_end,
+)
 from .engine import SimpleEngine
 from .pgn import build_pgn, default_pgn_path, write_pgn
 from .settings import load_settings, save_setting
@@ -118,6 +126,8 @@ class CabreChess:
         self.final_times = None
         self.saved_game_id = None
         self.loaded_game_id = None
+        self.confirm = None             # diálogo abierto (abandonar / tablas)
+        self.draw_offer_ply = None      # jugada en la que se ofreció tablas
         self.loaded_names = None
         self.saved_games = []
         self.saved_sel = None
@@ -279,8 +289,13 @@ class CabreChess:
             pygame.draw.circle(scr, color, (cx, cy), h, 3)
             pygame.draw.line(scr, color, (cx, cy), (cx, cy - h + 5), 3)
             pygame.draw.line(scr, color, (cx, cy), (cx + h - 6, cy), 3)
+        elif kind == "flag":     # bandera blanca (abandonar)
+            pygame.draw.line(scr, color, (cx - h + 3, cy - h), (cx - h + 3, cy + h), 3)
+            pygame.draw.polygon(scr, color, [(cx - h + 4, cy - h), (cx + h, cy - h + size // 4),
+                                             (cx - h + 4, cy - h + size // 2)])
         elif kind == "draw":     # tablas: ½
-            surf = self.font_xl.render("½", True, color)
+            font = self.font_xl if size >= 30 else self.font_med
+            surf = font.render("½", True, color)
             scr.blit(surf, (cx - surf.get_width() // 2, cy - surf.get_height() // 2))
         elif kind == "mate":     # dama cburnett
             surf = make_piece_sprite(chess.QUEEN, chess.BLACK, size)
@@ -605,6 +620,10 @@ class CabreChess:
 
         # Panel inferior
         self.draw_player_panel(not top_color, BOARD_X, BOARD_Y + BOARD_SIZE + 10)
+
+        # Diálogo de abandonar / tablas
+        if self.confirm and not self.game_over:
+            self.draw_confirm()
 
         # Overlay fin de juego
         if self.game_over and self.game_over_panel:
@@ -968,20 +987,8 @@ class CabreChess:
         self.screen.set_clip(None)
 
         # Botones inferiores del panel
-        btn_y = BOARD_Y + BOARD_SIZE - 42
-        buttons = [
-            ("reset", ACCENT),
-            ("flip",  ACCENT2),
-            ("undo",  TEXT_COLOR),
-            ("save",  (200, 180, 80)),
-            ("menu",  TEXT_COLOR),
-        ]
-        bw = (PANEL_W - 20) // len(buttons)
         mx, my = self.mouse_pos()
-        for i, (icon, color) in enumerate(buttons):
-            bx = PANEL_X + 5 + i * bw
-            by = btn_y
-            brect = pygame.Rect(bx, by, bw - 4, 34)
+        for icon, color, _action, brect in self.panel_buttons():
             hovered = brect.collidepoint(mx, my)
             bg = (50, 49, 46) if hovered else (38, 37, 34)
             pygame.draw.rect(self.screen, bg, brect, border_radius=6)
@@ -1016,6 +1023,130 @@ class CabreChess:
         # Mini gráfico de evaluación (solo análisis)
         if self.mode == "analysis" and len(self.eval_history) > 1:
             self.draw_eval_graph()
+
+    def panel_buttons(self):
+        """Botones de abajo del panel: (ícono, color, acción, rect). Una sola
+        definición para dibujar y para los clicks. Abandonar y ofrecer tablas
+        solo aparecen en una partida en curso (vs IA o 2 jugadores)."""
+        specs = [
+            ("reset", ACCENT, self.reset_game),
+            ("flip",  ACCENT2, self.flip_board),
+            ("undo",  TEXT_COLOR, self.undo_move),
+        ]
+        if self.mode in ("vsai", "pvp") and not self.game_over:
+            specs += [
+                ("draw", TEXT_COLOR, self.offer_draw),
+                ("flag", TEXT_COLOR, self.ask_resign),
+            ]
+        specs += [
+            ("save",  (200, 180, 80), self.save_pgn),
+            ("menu",  TEXT_COLOR, self.go_menu),
+        ]
+        btn_y = BOARD_Y + BOARD_SIZE - 42
+        bw = (PANEL_W - 20) // len(specs)
+        return [(icon, color, action, pygame.Rect(PANEL_X + 5 + i * bw, btn_y, bw - 4, 34))
+                for i, (icon, color, action) in enumerate(specs)]
+
+    # ─── ABANDONAR Y TABLAS ─────────────────────────────────────────────────────
+    CONFIRM_PANEL = (440, 170)
+
+    def human_color(self):
+        """Bando que usa los botones: en vs IA el jugador; en 2 jugadores,
+        el que tiene el turno."""
+        if self.mode == "vsai":
+            return not self.ai_color
+        return self.board.turn
+
+    def ask_resign(self):
+        if self.game_over or self.mode not in ("vsai", "pvp"):
+            return
+        who = color_name(self.human_color()).capitalize()
+        self.confirm = {
+            "title": "¿Abandonar la partida?",
+            "subtitle": f"{who} pierden la partida",
+            "buttons": [("Abandonar", self.resign), ("Cancelar", self.close_confirm)],
+        }
+
+    def resign(self):
+        self.confirm = None
+        if not self.game_over:
+            self.end_game(*resign_end(self.human_color()))
+
+    def can_offer_draw(self):
+        """Una oferta por jugada: si la rechazan, hay que mover para volver
+        a ofrecer (como en Lichess)."""
+        return (not self.game_over and self.mode in ("vsai", "pvp")
+                and self.draw_offer_ply != len(self.board.move_stack))
+
+    def offer_draw(self):
+        if self.game_over or self.mode not in ("vsai", "pvp"):
+            return
+        if not self.can_offer_draw():
+            self.toast("Ya ofreciste tablas: mové antes de volver a ofrecer")
+            return
+        self.draw_offer_ply = len(self.board.move_stack)
+        offerer = self.human_color()
+        if self.mode == "vsai":
+            ev = self.engine.evaluate(self.board)
+            if ai_accepts_draw(ev, self.ai_color, self.board.fullmove_number):
+                self.end_game("agreement", "1/2-1/2")
+            else:
+                self.toast("La IA rechaza las tablas")
+            return
+        # 2 jugadores: responde el rival
+        self.confirm = {
+            "title": f"{color_name(offerer).capitalize()} ofrecen tablas",
+            "subtitle": f"¿Aceptan {color_name(not offerer)}?",
+            "buttons": [("Aceptar", self.accept_draw), ("Rechazar", self.decline_draw)],
+        }
+
+    def accept_draw(self):
+        self.confirm = None
+        if not self.game_over:
+            self.end_game("agreement", "1/2-1/2")
+
+    def decline_draw(self):
+        self.confirm = None
+        self.toast("Tablas rechazadas")
+
+    def close_confirm(self):
+        self.confirm = None
+
+    def confirm_buttons(self):
+        pw, ph = self.CONFIRM_PANEL
+        py = WINDOW_H // 2 - ph // 2
+        out = []
+        for i, (label, action) in enumerate(self.confirm["buttons"]):
+            rect = pygame.Rect(WINDOW_W // 2 - 205 + i * 210, py + ph - 64, 200, 44)
+            out.append((label, action, rect))
+        return out
+
+    def draw_confirm(self):
+        overlay = pygame.Surface((WINDOW_W, WINDOW_H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 120))
+        self.screen.blit(overlay, (0, 0))
+        pw, ph = self.CONFIRM_PANEL
+        rect = pygame.Rect(WINDOW_W // 2 - pw // 2, WINDOW_H // 2 - ph // 2, pw, ph)
+        pygame.draw.rect(self.screen, PANEL_COLOR, rect, border_radius=14)
+        pygame.draw.rect(self.screen, ACCENT2, rect, 2, border_radius=14)
+        title = self.font_large.render(self.confirm["title"], True, TEXT_BRIGHT)
+        self.screen.blit(title, (WINDOW_W // 2 - title.get_width() // 2, rect.y + 22))
+        sub = self.font_med.render(self.confirm["subtitle"], True, TEXT_COLOR)
+        self.screen.blit(sub, (WINDOW_W // 2 - sub.get_width() // 2, rect.y + 62))
+        mx, my = self.mouse_pos()
+        for i, (label, _action, brect) in enumerate(self.confirm_buttons()):
+            hov = brect.collidepoint(mx, my)
+            c = ACCENT if i == 0 else ACCENT2
+            pygame.draw.rect(self.screen, c if hov else (50, 49, 46), brect, border_radius=8)
+            ls = self.font_med.render(label, True, BG_COLOR if hov else TEXT_COLOR)
+            self.screen.blit(ls, (brect.centerx - ls.get_width() // 2, brect.y + 12))
+
+    def handle_confirm_click(self, pos):
+        for _label, action, rect in self.confirm_buttons():
+            if rect.collidepoint(pos):
+                action()
+                return True
+        return False
 
     def mode_label(self):
         mode_names = {"pvp": "PvP", "vsai": f"vs IA (d{self.ai_depth})", "analysis": "Análisis"}
@@ -1388,6 +1519,7 @@ class CabreChess:
         if self.game_over:
             return
         self.game_over = True
+        self.confirm = None
         self.termination = termination
         self.result = result
         self.game_over_msg = end_message(termination, result)
@@ -1485,6 +1617,8 @@ class CabreChess:
         self.final_times = None
         self.saved_game_id = None
         self.loaded_game_id = None
+        self.confirm = None             # diálogo abierto (abandonar / tablas)
+        self.draw_offer_ply = None      # jugada en la que se ofreció tablas
         self.loaded_names = None
         self.time_white = self.time_selected
         self.time_black = self.time_selected
@@ -1508,6 +1642,7 @@ class CabreChess:
             return
         # Cancelar una búsqueda en curso: su resultado se descarta
         self.cancel_ai_search()
+        self.confirm = None
 
         self._undo_one()
         if self.mode == "vsai":
@@ -1925,7 +2060,9 @@ class CabreChess:
                         event.key == pygame.K_RETURN and event.mod & pygame.KMOD_ALT):
                     self.toggle_fullscreen()
                 elif event.key == pygame.K_ESCAPE:
-                    if self.game_over and self.game_over_panel:
+                    if self.confirm:
+                        self.close_confirm()
+                    elif self.game_over and self.game_over_panel:
                         self.close_game_over_panel()
                     elif self.game_over and self.review_index is not None:
                         self.review_index = None
@@ -2000,17 +2137,14 @@ class CabreChess:
         if self.game_over and self.handle_review_click(pos):
             return
 
+        # Diálogo de confirmación (abandonar / tablas)
+        if self.confirm:
+            self.handle_confirm_click(pos)
+            return
+
         # Botones del panel
-        btn_y = BOARD_Y + BOARD_SIZE - 42
-        if self.mode == "analysis":
-            buttons_actions = [self.reset_game, self.flip_board, self.undo_move, self.save_pgn, self.go_menu]
-        else:
-            buttons_actions = [self.reset_game, self.flip_board, self.undo_move, self.save_pgn, self.go_menu]
-        bw2 = (PANEL_W - 20) // len(buttons_actions)
-        for i, action in enumerate(buttons_actions):
-            bx = PANEL_X + 5 + i * bw2
-            r = pygame.Rect(bx, btn_y, bw2-4, 34)
-            if r.collidepoint(mx, my):
+        for _icon, _color, action, rect in self.panel_buttons():
+            if rect.collidepoint(mx, my):
                 action()
                 return
 
