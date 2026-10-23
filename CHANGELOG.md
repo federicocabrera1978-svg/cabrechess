@@ -6,6 +6,14 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Temas de tablero
+- Cuatro **temas de tablero** con los colores de Lichess: Marrón (el de siempre),
+  Azul, Verde y Gris. Las piezas siguen siendo las cburnett.
+- Tecla **`T`** para pasar al siguiente tema; muestra el nombre en un aviso y se
+  recuerda en `settings.json` (`"board_theme": "marron" | "azul" | "verde" | "gris"`).
+- Las letras y números de las coordenadas usan los colores del tema elegido.
+- Un valor desconocido en `settings.json` vuelve al tema Marrón.
+
 ### Abandonar y tablas
 - Botones **Abandonar** (bandera, con confirmación) y **Ofrecer tablas** (½) en
   el panel, solo durante una partida vs IA o de 2 jugadores.
