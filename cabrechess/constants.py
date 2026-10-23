@@ -15,6 +15,16 @@ PANEL_COLOR     = (30,  29,  26)
 LIGHT_SQ        = (240, 217, 181)
 DARK_SQ         = (181, 136,  99)
 HIGHLIGHT_SQ    = (205, 210,  106)
+
+# Temas de tablero (colores de Lichess): clave -> (nombre, clara, oscura).
+# El primero es el de siempre y el que se usa por defecto.
+BOARD_THEMES = {
+    "marron": ("Marrón", (240, 217, 181), (181, 136,  99)),
+    "azul":   ("Azul",   (222, 227, 230), (140, 162, 173)),
+    "verde":  ("Verde",  (255, 255, 221), (134, 166, 102)),
+    "gris":   ("Gris",   (220, 220, 220), (171, 171, 171)),
+}
+DEFAULT_THEME = "marron"
 SELECTED_SQ     = (246, 246, 105)
 LEGAL_DOT       = (0,   0,   0,  80)
 CHECK_SQ        = (220,  50,  50, 180)

@@ -6,8 +6,10 @@
 - Se puede forzar con la variable de entorno CABRECHESS_DATA_DIR.
 
 settings.json (opcional):
-    {"stockfish_path": "C:/ruta/a/stockfish.exe", "analysis_depth": 3, "sound": true}
+    {"stockfish_path": "C:/ruta/a/stockfish.exe", "analysis_depth": 3, "sound": true,
+     "board_theme": "marron"}
 "sound": false silencia el juego (también se cambia con la tecla M).
+"board_theme": marron / azul / verde / gris (también se cambia con la tecla T).
 stockfish_path vacío (por defecto) = se usa solo el motor propio, dentro del
 proceso. También se puede definir con la variable CABRECHESS_STOCKFISH.
 """
@@ -16,7 +18,8 @@ import os
 import sys
 from pathlib import Path
 
-DEFAULTS = {"stockfish_path": "", "analysis_depth": 3, "sound": True}
+DEFAULTS = {"stockfish_path": "", "analysis_depth": 3, "sound": True,
+            "board_theme": "marron"}
 
 
 def data_dir():
@@ -50,6 +53,9 @@ def load_settings(path=None):
     except (TypeError, ValueError):
         cfg["analysis_depth"] = DEFAULTS["analysis_depth"]
     cfg["sound"] = bool(cfg["sound"])
+    from .constants import BOARD_THEMES
+    if cfg["board_theme"] not in BOARD_THEMES:
+        cfg["board_theme"] = DEFAULTS["board_theme"]
     return cfg
 
 

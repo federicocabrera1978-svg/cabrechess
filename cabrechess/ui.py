@@ -19,9 +19,9 @@ from .constants import (
     BOARD_Y,
     BORDER_COLOR,
     DANGER,
-    DARK_SQ,
+    BOARD_THEMES,
     LAST_MOVE,
-    LIGHT_SQ,
+    DEFAULT_THEME,
     MENU_BTN_X,
     MENU_OPT_X,
     MENU_ROW_Y,
@@ -116,7 +116,9 @@ class CabreChess:
         self.ai_think_start = 0
         self.ai_delay = 0.6
         self.engine = SimpleEngine()
-        self.sound = SoundManager(enabled=load_settings().get("sound", True))
+        _cfg = load_settings()
+        self.sound = SoundManager(enabled=_cfg.get("sound", True))
+        self.board_theme = _cfg.get("board_theme", DEFAULT_THEME)
         self.silent = False             # True al reconstruir partidas (sin sonido)
         self.low_time_warned = set()    # colores ya avisados con reloj bajo
         self.analyzer = None            # análisis en segundo plano (lazy)
@@ -302,10 +304,35 @@ class CabreChess:
             scr.blit(surf, (cx - surf.get_width() // 2, cy - surf.get_height() // 2))
 
     # ─── RENDER ESTÁTICO ────────────────────────────────────────────────────────
+    @property
+    def theme_colors(self):
+        """(clara, oscura) del tema de tablero actual."""
+        _, light, dark = BOARD_THEMES.get(self.board_theme, BOARD_THEMES[DEFAULT_THEME])
+        return light, dark
+
+    def set_board_theme(self, key, save=True):
+        if key not in BOARD_THEMES:
+            return False
+        self.board_theme = key
+        self.render_static_board()
+        if save:
+            save_setting("board_theme", key)
+        return True
+
+    def cycle_board_theme(self):
+        """Tecla T: pasa al siguiente tema y lo recuerda en settings.json."""
+        keys = list(BOARD_THEMES)
+        idx = keys.index(self.board_theme) if self.board_theme in keys else -1
+        key = keys[(idx + 1) % len(keys)]
+        self.set_board_theme(key)
+        self.toast(f"Tablero: {BOARD_THEMES[key][0]}")
+        return key
+
     def render_static_board(self):
+        light_sq, dark_sq = self.theme_colors
         for rank in range(8):
             for file in range(8):
-                color = LIGHT_SQ if (rank + file) % 2 == 0 else DARK_SQ
+                color = light_sq if (rank + file) % 2 == 0 else dark_sq
                 rect = pygame.Rect(file * SQUARE_SIZE, rank * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
                 pygame.draw.rect(self.board_surf, color, rect)
 
@@ -809,18 +836,19 @@ class CabreChess:
     def draw_coordinates(self):
         files = 'abcdefgh'
         ranks = '12345678'
+        light_sq, dark_sq = self.theme_colors
         for i in range(8):
             # Archivos (abajo)
             fi = i if not self.flipped else 7-i
             # Fila inferior: columna par = casilla oscura -> letra clara
             f_surf = self.font_coord.render(files[fi], True,
-                LIGHT_SQ if i%2==0 else DARK_SQ)
+                light_sq if i%2==0 else dark_sq)
             self.screen.blit(f_surf, (BOARD_X + (i+1)*SQUARE_SIZE - f_surf.get_width() - 3,
                                       BOARD_Y + BOARD_SIZE - f_surf.get_height() - 1))
             # Rangos (izquierda)
             ri = 7-i if not self.flipped else i
             r_surf = self.font_coord.render(ranks[ri], True,
-                DARK_SQ if (7-i)%2==1 else LIGHT_SQ)
+                dark_sq if (7-i)%2==1 else light_sq)
             self.screen.blit(r_surf, (BOARD_X + 2, BOARD_Y + i*SQUARE_SIZE + 2))
 
     def draw_pieces(self):
@@ -2079,6 +2107,8 @@ class CabreChess:
                     self.flip_board()
                 elif event.key == pygame.K_m:
                     self.toggle_sound()
+                elif event.key == pygame.K_t:
+                    self.cycle_board_theme()
                 elif event.key == pygame.K_r:
                     self.reset_game()
                 elif event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL):
