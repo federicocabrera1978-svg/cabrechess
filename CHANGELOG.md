@@ -6,6 +6,17 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-23
+
+Primera versión publicada.
+
+### Versión
+- La versión sale de un solo lugar (`cabrechess/_version.py`): el menú, el
+  paquete y el `.exe` muestran 1.1.0 (antes el menú decía "v1.0.0" a mano y el
+  paquete 0.1.0).
+- El release de GitHub publica como notas la sección de esta versión del
+  CHANGELOG y falla si la etiqueta no coincide con la versión del código.
+
 ### Temas de tablero
 - Cuatro **temas de tablero** con los colores de Lichess: Marrón (el de siempre),
   Azul, Verde y Gris. Las piezas siguen siendo las cburnett.
@@ -180,3 +191,6 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
   mate (por ejemplo, rey solo), la partida es **tablas** y no victoria
   (regla FIDE 6.9).
 - Las partículas de jaque no aparecían si el rey estaba en a1.
+
+[Unreleased]: https://github.com/federicocabrera1978-svg/cabrechess/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/federicocabrera1978-svg/cabrechess/releases/tag/v1.1.0

@@ -30,7 +30,7 @@ Homepage = "https://github.com/federicocabrera1978-svg/cabrechess"
 packages = ["cabrechess"]
 
 [tool.setuptools.dynamic]
-version = { attr = "cabrechess.__version__" }
+version = { attr = "cabrechess._version.__version__" }
 
 [tool.setuptools.package-data]
 cabrechess = [

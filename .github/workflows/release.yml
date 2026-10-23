@@ -18,6 +18,10 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Release notes from CHANGELOG
+        # Falla si la etiqueta no coincide con cabrechess.__version__
+        run: python tools/release_notes.py "${{ github.ref_name }}" release_notes.md
+
       - name: Install dependencies
         run: pip install -r requirements.txt pyinstaller==6.21.0
 
@@ -61,6 +65,8 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
+          name: CabreChess ${{ github.ref_name }}
+          body_path: release_notes.md
           files: |
             dist/CabreChess-win64.zip
             CabreChess-win64.zip.sha256
