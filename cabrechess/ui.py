@@ -9,6 +9,7 @@ import time
 import chess
 import pygame
 
+from ._version import __version__
 from .clock import TIME_INCREMENT, TIME_OPTIONS, format_clock
 from .constants import (
     ACCENT,
@@ -62,6 +63,11 @@ from .pgn import build_pgn, default_pgn_path, write_pgn
 from .settings import load_settings, save_setting
 from .sounds import LOW_TIME_SECONDS, SoundManager, sound_for_move
 from .sprites import PIECE_NAMES, load_window_icon, make_piece_shadow, make_piece_sprite
+
+
+def menu_version_text():
+    """Texto de versión del pie del menú (sale de ``__version__``)."""
+    return f"v{__version__} — Motor: Minimax Alpha-Beta"
 
 
 class CabreChess:
@@ -518,7 +524,7 @@ class CabreChess:
         ]
 
         # Versión
-        v = self.font_tiny.render("v1.0.0 — Motor: Minimax Alpha-Beta", True, TEXT_DIM)
+        v = self.font_tiny.render(menu_version_text(), True, TEXT_DIM)
         self.screen.blit(v, (WINDOW_W//2 - v.get_width()//2, WINDOW_H - 30))
 
     def draw_game(self):
