@@ -6,6 +6,26 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### IA: búsqueda nueva (primera parte de B3)
+- El motor busca con **profundización iterativa** y **tope de tiempo por jugada**:
+  Fácil 0,5 s, Normal 1,5 s y Difícil 3 s. "Difícil" ya no se queda 15 s o más
+  pensando en el medio juego.
+- El tope se recorta con el reloj de la IA (más o menos 1/30 de lo que le queda
+  más medio incremento), así no pierde por tiempo en partidas cortas.
+- **Búsqueda de quietud**: sigue los cambios de piezas hasta una posición
+  tranquila. La IA ya no entrega la dama por un peón defendido ni se deja comer
+  piezas en "Fácil".
+- **Orden de jugadas MVV-LVA** (primero la víctima más valiosa con el atacante
+  más barato) y la mejor jugada de la iteración anterior: la poda corta antes y
+  llega más profundo en el mismo tiempo.
+- Entre dos mates elige el más corto, y reconoce tablas por repetición y por la
+  regla de 50 dentro de la búsqueda.
+- Al cancelar (deshacer, reiniciar o caída de bandera) el hilo de la IA deja de
+  calcular enseguida, en vez de terminar la búsqueda y descartarla.
+- En 6 partidas de prueba contra el motor anterior (los dos en "Normal"), el
+  nuevo ganó 4 y empató 2.
+- Tests nuevos en `tests/test_motor_busqueda.py`.
+
 ## [1.1.0] - 2026-10-23
 
 Primera versión publicada.

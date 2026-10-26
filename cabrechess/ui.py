@@ -58,7 +58,7 @@ from .endings import (
     flag_end,
     resign_end,
 )
-from .engine import SimpleEngine
+from .engine import SimpleEngine, ai_time_budget
 from .pgn import build_pgn, default_pgn_path, write_pgn
 from .settings import load_settings, save_setting
 from .sounds import LOW_TIME_SECONDS, SoundManager, sound_for_move
@@ -149,6 +149,7 @@ class CabreChess:
         # Protege ai_search_id / ai_result_move / ai_move_ready entre el hilo
         # de la IA y el loop principal
         self.ai_lock = threading.Lock()
+        self.ai_stop = None            # threading.Event de la búsqueda en curso
 
         # Animación
         self.anim_move = None
@@ -1570,14 +1571,23 @@ class CabreChess:
         para no bloquear el loop principal (dibujo/eventos) durante la búsqueda."""
         board_copy = self.board.copy()
         depth = self.ai_depth
+        remaining = self.time_white if self.ai_color == chess.WHITE else self.time_black
+        time_limit = ai_time_budget(depth, remaining, self.time_increment)
+        stop = threading.Event()
         with self.ai_lock:
+            if self.ai_stop is not None:
+                self.ai_stop.set()
+            self.ai_stop = stop
             self.ai_move_ready = False
             self.ai_result_move = None
             self.ai_search_id += 1
             search_id = self.ai_search_id
 
         def worker():
-            move = self.engine.get_best_move(board_copy, depth=depth)
+            # Una instancia por búsqueda: una búsqueda cancelada que todavía
+            # no cortó no comparte estado con la nueva.
+            move = SimpleEngine().get_best_move(board_copy, depth=depth,
+                                                time_limit=time_limit, stop_event=stop)
             with self.ai_lock:
                 # Si la partida se reinició/deshizo mientras pensaba, descartar
                 if search_id != self.ai_search_id:
@@ -1603,6 +1613,9 @@ class CabreChess:
             self.ai_search_id += 1
             self.ai_move_ready = False
             self.ai_result_move = None
+            if self.ai_stop is not None:
+                self.ai_stop.set()      # que el hilo viejo deje de calcular
+                self.ai_stop = None
         self.ai_thinking = False
         self.ai_thread = None
 

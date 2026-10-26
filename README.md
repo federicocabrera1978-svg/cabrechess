@@ -28,8 +28,9 @@ Por Federico Cabrera.
 ## Funcionalidades
 
 - **Contra la IA** con tres niveles (Fácil / Normal / Difícil). El motor es propio:
-  minimax con poda alfa-beta y tablas pieza-casilla, y corre en un hilo aparte para
-  que la interfaz no se trabe.
+  alfa-beta con profundización iterativa, búsqueda de quietud y orden de jugadas
+  MVV-LVA, con un tope de tiempo por jugada (0,5 / 1,5 / 3 s) que además se ajusta
+  a su reloj. Corre en un hilo aparte para que la interfaz no se trabe.
 - **Elegís el color** contra la IA: blancas, negras o al azar (con negras el tablero se gira solo).
 - **2 jugadores** en la misma compu (PvP).
 - **Modo análisis** con barra y gráfico de evaluación.
@@ -177,7 +178,7 @@ cabrechess/
 ├── __init__.py    # API pública: CabreChess, SimpleEngine, main
 ├── __main__.py    # python -m cabrechess
 ├── constants.py   # tamaños de ventana, colores, glifos
-├── engine.py      # motor propio (minimax + alfa-beta + tablas pieza-casilla)
+├── engine.py      # motor propio (alfa-beta iterativo + quietud + MVV-LVA)
 ├── clock.py       # formato del reloj y resultado por bandera
 ├── pgn.py         # exportación a PGN
 ├── openings.py    # nombres de aperturas (ECO), búsqueda por posición
@@ -204,7 +205,7 @@ podés invitarme un café en [Ko-fi](https://ko-fi.com/federicocabrera). ☕
 **CabreChess** is a desktop chess game written in Python with `pygame` and `python-chess`,
 inspired by Lichess.
 
-**Features:** play against a built-in AI (minimax + alpha-beta, 3 levels, runs in a
+**Features:** play against a built-in AI (iterative-deepening alpha-beta with quiescence search and a per-move time limit, 3 levels, runs in a
 background thread) as white, black or random; local 2-player mode; analysis mode with
 evaluation bar and graph; 1/3/5/10-minute clocks with +3 s increment and proper
 flag-vs-insufficient-material handling; full undo (clocks, captures, eval); premoves,
