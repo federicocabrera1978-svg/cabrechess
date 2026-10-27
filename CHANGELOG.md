@@ -6,6 +6,25 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### IA: seis niveles y mejor evaluación (segunda parte de B3)
+- El menú tiene **6 niveles de IA** en vez de Fácil/Normal/Difícil:
+  1 Principiante, 2 Novato, 3 Aficionado (por defecto), 4 Club, 5 Fuerte y
+  6 Experto. Debajo de las opciones se ve el nombre del nivel elegido.
+- Cada nivel tiene su profundidad máxima y su tope de tiempo por jugada
+  (0,3 / 0,5 / 1 / 1,5 / 2,5 / 4 s). Los niveles 1 a 4 suman un poco de azar al
+  puntaje de cada jugada, así a veces eligen una peor, como una persona de ese
+  nivel; los niveles 5 y 6 juegan siempre su mejor jugada. Ningún nivel deja
+  pasar un mate en 1.
+- **Tablas de posición para todas las piezas** (alfiles, torres, dama y rey, que
+  antes solo tenían peones y caballos). En el medio juego el rey prefiere
+  quedarse enrocado; en el final va al centro.
+- La búsqueda de quietud sigue solo capturas: así la IA ya no posterga una
+  coronación segura por una jugada de rey.
+- Calibración rápida: 4 partidas por cruce entre niveles vecinos. El nivel más
+  alto sacó 4/4 (2 contra 1), 4/4 (3 contra 2), 3,5/4 (4 contra 3), 2,5/4 (5
+  contra 4) y 3,5/4 (6 contra 5). Todavía no hay una medición de Elo.
+- Tests nuevos en `tests/test_niveles_ia.py`.
+
 ### IA: búsqueda nueva (primera parte de B3)
 - El motor busca con **profundización iterativa** y **tope de tiempo por jugada**:
   Fácil 0,5 s, Normal 1,5 s y Difícil 3 s. "Difícil" ya no se queda 15 s o más

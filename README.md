@@ -27,10 +27,11 @@ Por Federico Cabrera.
 
 ## Funcionalidades
 
-- **Contra la IA** con tres niveles (Fácil / Normal / Difícil). El motor es propio:
-  alfa-beta con profundización iterativa, búsqueda de quietud y orden de jugadas
-  MVV-LVA, con un tope de tiempo por jugada (0,5 / 1,5 / 3 s) que además se ajusta
-  a su reloj. Corre en un hilo aparte para que la interfaz no se trabe.
+- **Contra la IA** con seis niveles (1 Principiante, 2 Novato, 3 Aficionado, 4 Club,
+  5 Fuerte y 6 Experto). El motor es propio: alfa-beta con profundización iterativa,
+  búsqueda de quietud, orden de jugadas MVV-LVA y tablas de posición para todas las
+  piezas, con un tope de tiempo por jugada (de 0,3 s en el nivel 1 a 4 s en el 6) que
+  además se ajusta a su reloj. Corre en un hilo aparte para que la interfaz no se trabe.
 - **Elegís el color** contra la IA: blancas, negras o al azar (con negras el tablero se gira solo).
 - **2 jugadores** en la misma compu (PvP).
 - **Modo análisis** con barra y gráfico de evaluación.
