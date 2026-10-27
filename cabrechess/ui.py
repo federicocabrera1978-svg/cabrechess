@@ -58,7 +58,7 @@ from .endings import (
     flag_end,
     resign_end,
 )
-from .engine import SimpleEngine, ai_time_budget
+from .engine import AI_LEVELS, DEFAULT_AI_LEVEL, SimpleEngine, ai_level, ai_time_budget
 from .pgn import build_pgn, default_pgn_path, write_pgn
 from .settings import load_settings, save_setting
 from .sounds import LOW_TIME_SECONDS, SoundManager, sound_for_move
@@ -141,7 +141,7 @@ class CabreChess:
         self.saved_sel = None
         self.saved_scroll = 0
         self.saved_confirm_delete = None
-        self.ai_depth = 3
+        self.ai_level = DEFAULT_AI_LEVEL
         self.ai_thread = None
         self.ai_move_ready = False
         self.ai_result_move = None
@@ -494,7 +494,9 @@ class CabreChess:
                 self.screen.blit(t, (rect.centerx - t.get_width() // 2, rect.centery - t.get_height() // 2))
 
         # Incremento info
-        inc_surf = self.font_tiny.render(f"+{self.time_increment}s por movimiento", True, TEXT_DIM)
+        level_name = ai_level(self.ai_level)["name"]
+        inc_surf = self.font_tiny.render(
+            f"IA nivel {self.ai_level}: {level_name}  ·  +{self.time_increment}s por movimiento", True, TEXT_DIM)
         self.screen.blit(inc_surf, (WINDOW_W//2 - inc_surf.get_width()//2, MENU_ROW_Y[-1] + 34))
 
     # Layout del menú: una sola fuente de verdad para dibujo y clics
@@ -514,8 +516,8 @@ class CabreChess:
             return [(text, pygame.Rect(MENU_BTN_X + i*(w + 6), y, w, 26), value == current, value)
                     for i, (text, value) in enumerate(specs)]
         return [
-            ("Dificultad IA:", MENU_ROW_Y[0], ACCENT,
-             row(MENU_ROW_Y[0], [("Fácil", 1), ("Normal", 3), ("Difícil", 5)], 84, self.ai_depth)),
+            ("Nivel IA:", MENU_ROW_Y[0], ACCENT,
+             row(MENU_ROW_Y[0], [(str(lvl), lvl) for lvl in sorted(AI_LEVELS)], 40, self.ai_level)),
             ("Color (vs IA):", MENU_ROW_Y[1], ACCENT,
              row(MENU_ROW_Y[1], [("Blancas", "white"), ("Negras", "black"), ("Azar", "random")],
                  84, self.player_color_choice)),
@@ -1184,7 +1186,7 @@ class CabreChess:
         return False
 
     def mode_label(self):
-        mode_names = {"pvp": "PvP", "vsai": f"vs IA (d{self.ai_depth})", "analysis": "Análisis"}
+        mode_names = {"pvp": "PvP", "vsai": f"vs IA (nivel {self.ai_level})", "analysis": "Análisis"}
         return mode_names.get(self.mode, "")
 
     def opening_text(self, max_w):
@@ -1570,9 +1572,9 @@ class CabreChess:
         """Lanza el cálculo del movimiento de la IA en un hilo aparte
         para no bloquear el loop principal (dibujo/eventos) durante la búsqueda."""
         board_copy = self.board.copy()
-        depth = self.ai_depth
+        level = self.ai_level
         remaining = self.time_white if self.ai_color == chess.WHITE else self.time_black
-        time_limit = ai_time_budget(depth, remaining, self.time_increment)
+        time_limit = ai_time_budget(level, remaining, self.time_increment)
         stop = threading.Event()
         with self.ai_lock:
             if self.ai_stop is not None:
@@ -1586,8 +1588,8 @@ class CabreChess:
         def worker():
             # Una instancia por búsqueda: una búsqueda cancelada que todavía
             # no cortó no comparte estado con la nueva.
-            move = SimpleEngine().get_best_move(board_copy, depth=depth,
-                                                time_limit=time_limit, stop_event=stop)
+            move = SimpleEngine().play_level(board_copy, level,
+                                             time_limit=time_limit, stop_event=stop)
             with self.ai_lock:
                 # Si la partida se reinició/deshizo mientras pensaba, descartar
                 if search_id != self.ai_search_id:
@@ -2370,7 +2372,7 @@ class CabreChess:
                 return
 
         setters = [
-            lambda v: setattr(self, "ai_depth", v),
+            lambda v: setattr(self, "ai_level", v),
             lambda v: setattr(self, "player_color_choice", v),
             lambda v: setattr(self, "time_selected", v),
         ]
