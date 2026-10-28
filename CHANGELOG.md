@@ -14,6 +14,26 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
   `Termination`). Las partidas de la base de datos se abren con la misma rutina.
 - Tests en `tests/test_pgn_cargar.py`.
 
+### Stockfish como rival (opcional, B4)
+- Si configuraste `stockfish_path` en `settings.json` (o la variable
+  `CABRECHESS_STOCKFISH`), el menú muestra una fila nueva **Rival IA:
+  CabreChess / Stockfish**. Sin ruta configurada la fila no aparece y todo
+  sigue igual que antes (el juego no lanza ningún programa externo).
+- Con Stockfish elegido, los 6 niveles del menú usan el `Skill Level` de
+  Stockfish (0, 3, 6, 10, 15 y 20) y el mismo tope de tiempo por jugada que el
+  motor propio, recortado por el reloj.
+- La elección se guarda en `settings.json` (`"ai_engine": "cabrechess" | "stockfish"`).
+- El panel, el modo ("vs Stockfish (nivel N)"), el aviso "Stockfish pensando…",
+  la base de partidas y el PGN muestran "Stockfish (nivel N)" como jugador.
+- Se usa un solo proceso de Stockfish para toda la sesión y se cierra al salir
+  o al volver a elegir CabreChess.
+- Si Stockfish no arranca o falla, esa jugada (y el resto de la partida) la hace
+  el motor propio y aparece el aviso "Stockfish no respondió: juega el motor propio".
+- Tests nuevos en `tests/test_rival_stockfish.py`, con un motor UCI de mentira
+  (`tests/fake_uci.py`) para no depender de tener Stockfish instalado. El test de
+  "sin procesos externos" ahora verifica que `cabrechess.stockfish` solo se importa
+  dentro de funciones (nunca al cargar el juego).
+
 ### IA: seis niveles y mejor evaluación (segunda parte de B3)
 - El menú tiene **6 niveles de IA** en vez de Fácil/Normal/Difícil:
   1 Principiante, 2 Novato, 3 Aficionado (por defecto), 4 Club, 5 Fuerte y

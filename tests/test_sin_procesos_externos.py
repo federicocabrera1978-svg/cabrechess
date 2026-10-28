@@ -87,5 +87,12 @@ def test_stockfish_solo_importa_chess_engine_y_es_lazy():
     src = (PKG / OPCIONAL_STOCKFISH).read_text(encoding="utf-8")
     assert "popen_uci" in src
     for py in PKG.glob("*.py"):
-        if py.name != OPCIONAL_STOCKFISH:
-            assert "from .stockfish import" not in py.read_text(encoding="utf-8") or py.name == "analysis.py"
+        if py.name == OPCIONAL_STOCKFISH:
+            continue
+        tree = ast.parse(py.read_text(encoding="utf-8"))
+        # Nunca a nivel de módulo: solo dentro de funciones (import diferido)
+        for node in tree.body:
+            if isinstance(node, ast.ImportFrom):
+                assert node.module != "stockfish", f"{py.name} importa stockfish al cargar"
+        usa = any(isinstance(n, ast.ImportFrom) and n.module == "stockfish" for n in ast.walk(tree))
+        assert not usa or py.name in ("analysis.py", "ui.py"), py.name

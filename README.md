@@ -63,6 +63,8 @@ Por Federico Cabrera.
 - **Stockfish (opcional, apagado por defecto)**: creá `settings.json` en la misma
   carpeta de datos con `{"stockfish_path": "C:/ruta/stockfish.exe"}` (o definí la
   variable `CABRECHESS_STOCKFISH`). Si la ruta no anda, vuelve solo al motor propio.
+  Con la ruta configurada, el menú suma **Rival IA: CabreChess / Stockfish** para jugar
+  contra Stockfish; los niveles 1 a 6 usan su `Skill Level` (0 a 20).
   `analysis_depth` (1-5, por defecto 3) ajusta la profundidad del motor propio.
   `board_theme` (`marron`, `azul`, `verde` o `gris`) elige el tablero; también se cambia con `T`.
 
@@ -215,7 +217,7 @@ flag-vs-insufficient-material handling; full undo (clocks, captures, eval); prem
 drag and drop, promotion picker; PGN export; Lichess cburnett pieces; Windows `.exe`
 built reproducibly by GitHub Actions with a SHA-256 checksum.
 
-**Saved games & analysis:** every finished game is stored automatically in a local SQLite database (`%APPDATA%\\CabreChess\\partidas.db` on Windows, `~/.cabrechess/` elsewhere); browse, open in analysis, export or delete them from *Partidas guardadas*. Analysis shows the best move (arrow + SAN) and evaluation using the built-in engine in-process; Stockfish can optionally be configured via `settings.json` (`stockfish_path`) or `CABRECHESS_STOCKFISH`.
+**Saved games & analysis:** every finished game is stored automatically in a local SQLite database (`%APPDATA%\\CabreChess\\partidas.db` on Windows, `~/.cabrechess/` elsewhere); browse, open in analysis, export or delete them from *Partidas guardadas*. Analysis shows the best move (arrow + SAN) and evaluation using the built-in engine in-process; Stockfish can optionally be configured via `settings.json` (`stockfish_path`) or `CABRECHESS_STOCKFISH`; once configured it can also be picked as the opponent in the menu (*Rival IA*), with levels 1-6 mapped to its Skill Level.
 
 **Controls:** click or drag to move · right-click/`Esc` cancels a premove · `Ctrl+Z` undo ·
 `F` flip board · `M` mute/unmute sound · `T` board theme (brown, blue, green, grey) · `R` restart · `F11`/`Alt+Enter` fullscreen (window is resizable) · `Esc` closes the game-over panel / back to menu / quit · after the game, `←` `→` `Home` `End` review the moves.
