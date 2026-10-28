@@ -6,6 +6,14 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### PGN: cargar archivo y FEN (B6)
+- En el menú hay **Cargar PGN** y **Cargar FEN**. El PGN se abre con el diálogo de
+  archivo; el FEN se pega en un cuadro de texto. Ambos entran en modo análisis con
+  la barra de revisión (◀ ▶) lista.
+- La exportación PGN pasa a usar `chess.pgn` (sigue incluyendo `TimeControl` y
+  `Termination`). Las partidas de la base de datos se abren con la misma rutina.
+- Tests en `tests/test_pgn_cargar.py`.
+
 ### IA: seis niveles y mejor evaluación (segunda parte de B3)
 - El menú tiene **6 niveles de IA** en vez de Fácil/Normal/Difícil:
   1 Principiante, 2 Novato, 3 Aficionado (por defecto), 4 Club, 5 Fuerte y
