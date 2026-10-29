@@ -34,6 +34,7 @@ from .constants import (
     PREMOVE_SQ,
     SELECTED_SQ,
     SQUARE_SIZE,
+    STOCKFISH_SKILL,
     TEXT_BRIGHT,
     TEXT_COLOR,
     TEXT_DIM,
@@ -126,6 +127,12 @@ class CabreChess:
         _cfg = load_settings()
         self.sound = SoundManager(enabled=_cfg.get("sound", True))
         self.board_theme = _cfg.get("board_theme", DEFAULT_THEME)
+        # Rival opcional Stockfish (B4): solo si el usuario configuró la ruta.
+        self.stockfish_path = _cfg.get("stockfish_path", "")
+        self.ai_engine = _cfg.get("ai_engine", "cabrechess") if self.stockfish_path else "cabrechess"
+        self.sf_player = None           # StockfishPlayer (lazy, un proceso)
+        self.sf_failed = False          # Stockfish falló: se juega con el motor propio
+        self.sf_error_pending = False   # avisar la falla desde el loop principal
         self.silent = False             # True al reconstruir partidas (sin sonido)
         self.low_time_warned = set()    # colores ya avisados con reloj bajo
         self.analyzer = None            # análisis en segundo plano (lazy)
@@ -504,9 +511,14 @@ class CabreChess:
 
         # Incremento info
         level_name = ai_level(self.ai_level)["name"]
+        if self.stockfish_path and self.ai_engine == "stockfish":
+            who = f"Stockfish nivel {self.ai_level} (Skill Level {STOCKFISH_SKILL.get(self.ai_level, 6)})"
+        else:
+            who = f"IA nivel {self.ai_level}: {level_name}"
+        info_y = self.menu_option_rows()[-1][1] + 34
         inc_surf = self.font_tiny.render(
-            f"IA nivel {self.ai_level}: {level_name}  ·  +{self.time_increment}s por movimiento", True, TEXT_DIM)
-        self.screen.blit(inc_surf, (WINDOW_W//2 - inc_surf.get_width()//2, MENU_ROW_Y[-1] + 34))
+            f"{who}  ·  +{self.time_increment}s por movimiento", True, TEXT_DIM)
+        self.screen.blit(inc_surf, (WINDOW_W//2 - inc_surf.get_width()//2, info_y))
 
     # Layout del menú: una sola fuente de verdad para dibujo y clics
     def menu_main_buttons(self):
@@ -533,10 +545,15 @@ class CabreChess:
         ]
 
     def menu_option_rows(self):
+        return [r[:4] for r in self.menu_option_rows_with_setters()]
+
+    def menu_option_rows_with_setters(self):
+        """Filas de opciones del menú con su setter: (etiqueta, y, color,
+        opciones, setter). La fila "Rival IA" solo aparece si hay Stockfish."""
         def row(y, specs, w, current):
             return [(text, pygame.Rect(MENU_BTN_X + i*(w + 6), y, w, 26), value == current, value)
                     for i, (text, value) in enumerate(specs)]
-        return [
+        rows = [
             ("Nivel IA:", MENU_ROW_Y[0], ACCENT,
              row(MENU_ROW_Y[0], [(str(lvl), lvl) for lvl in sorted(AI_LEVELS)], 40, self.ai_level)),
             ("Color (vs IA):", MENU_ROW_Y[1], ACCENT,
@@ -546,6 +563,15 @@ class CabreChess:
              row(MENU_ROW_Y[2], [("1 min", 60), ("3 min", 180), ("5 min", 300), ("10 min", 600)],
                  62, self.time_selected)),
         ]
+        setters = [lambda v: setattr(self, "ai_level", v),
+                   lambda v: setattr(self, "player_color_choice", v),
+                   lambda v: setattr(self, "time_selected", v)]
+        if self.stockfish_path:
+            rows.append(("Rival IA:", MENU_ROW_Y[3], ACCENT,
+                         row(MENU_ROW_Y[3], [("CabreChess", "cabrechess"), ("Stockfish", "stockfish")],
+                             100, self.ai_engine)))
+            setters.append(self.set_ai_engine)
+        return [(*r, setter) for r, setter in zip(rows, setters)]
 
         # Versión
         v = self.font_tiny.render(menu_version_text(), True, TEXT_DIM)
@@ -752,7 +778,7 @@ class CabreChess:
         name = "Jugador Negro" if color == chess.BLACK else "Jugador Blanco"
         if self.mode == "vsai":
             if color == self.ai_color:
-                name = "CabreChess AI"
+                name = self.ai_name()
         if self.loaded_names:                     # partida abierta desde la base
             name = self.loaded_names[0 if color == chess.WHITE else 1]
         sym_surf = make_piece_sprite(chess.KING, color, 22)
@@ -1207,7 +1233,8 @@ class CabreChess:
         return False
 
     def mode_label(self):
-        mode_names = {"pvp": "PvP", "vsai": f"vs IA (nivel {self.ai_level})", "analysis": "Análisis"}
+        mode_names = {"pvp": "PvP", "vsai": (f"vs Stockfish (nivel {self.ai_level})" if self.uses_stockfish()
+                                else f"vs IA (nivel {self.ai_level})"), "analysis": "Análisis"}
         return mode_names.get(self.mode, "")
 
     def opening_text(self, max_w):
@@ -1349,10 +1376,12 @@ class CabreChess:
     def player_names(self):
         white_name, black_name = self.pgn_white, self.pgn_black
         if self.mode == "vsai":
+            name = (f"Stockfish (nivel {self.ai_level})" if self.uses_stockfish()
+                    else "CabreChess AI")
             if self.ai_color == chess.BLACK:
-                black_name = "CabreChess AI"
+                black_name = name
             else:
-                white_name = "CabreChess AI"
+                white_name = name
         return white_name, black_name
 
     def autosave_game(self):
@@ -1387,7 +1416,8 @@ class CabreChess:
     def draw_thinking(self):
         elapsed = time.time() - self.ai_think_start
         dots = "." * (int(elapsed * 2) % 4)
-        txt = self.font_med.render(f"IA pensando{dots}", True, ACCENT)
+        who = "Stockfish" if self.uses_stockfish() else "IA"
+        txt = self.font_med.render(f"{who} pensando{dots}", True, ACCENT)
         bx, by = BOARD_X + BOARD_SIZE//2 - 80, BOARD_Y + BOARD_SIZE + 50
         pygame.draw.rect(self.screen, PANEL_COLOR,
             pygame.Rect(bx-10, by-5, txt.get_width()+20, txt.get_height()+10), border_radius=5)
@@ -1606,11 +1636,23 @@ class CabreChess:
             self.ai_search_id += 1
             search_id = self.ai_search_id
 
+        sf_player = self.get_stockfish_player() if self.uses_stockfish() else None
+
         def worker():
-            # Una instancia por búsqueda: una búsqueda cancelada que todavía
-            # no cortó no comparte estado con la nueva.
-            move = SimpleEngine().play_level(board_copy, level,
-                                             time_limit=time_limit, stop_event=stop)
+            move = None
+            if sf_player is not None:
+                try:
+                    move = sf_player.play(board_copy, level, time_limit)
+                except Exception:   # noqa: BLE001 - cualquier falla del motor externo
+                    # Ruta mala, motor colgado, etc.: se sigue con el motor propio.
+                    self.sf_failed = True
+                    self.sf_error_pending = True
+                    move = None
+            if move is None or move not in board_copy.legal_moves:
+                # Una instancia por búsqueda: una búsqueda cancelada que todavía
+                # no cortó no comparte estado con la nueva.
+                move = SimpleEngine().play_level(board_copy, level,
+                                                 time_limit=time_limit, stop_event=stop)
             with self.ai_lock:
                 # Si la partida se reinició/deshizo mientras pensaba, descartar
                 if search_id != self.ai_search_id:
@@ -1620,6 +1662,35 @@ class CabreChess:
 
         self.ai_thread = threading.Thread(target=worker, daemon=True)
         self.ai_thread.start()
+
+    def uses_stockfish(self):
+        """True si el rival de "Jugar contra IA" es Stockfish."""
+        return (self.mode == "vsai" and self.ai_engine == "stockfish"
+                and bool(self.stockfish_path) and not self.sf_failed)
+
+    def ai_name(self):
+        return "Stockfish" if self.uses_stockfish() else "CabreChess AI"
+
+    def get_stockfish_player(self):
+        # Import diferido: sin Stockfish configurado no se carga chess.engine.
+        if self.sf_player is None:
+            from .stockfish import StockfishPlayer
+            self.sf_player = StockfishPlayer(self.stockfish_path)
+        return self.sf_player
+
+    def close_stockfish(self):
+        if self.sf_player is not None:
+            self.sf_player.close()
+            self.sf_player = None
+
+    def set_ai_engine(self, value):
+        if value == "stockfish" and not self.stockfish_path:
+            return
+        self.ai_engine = value
+        if value != "stockfish":
+            self.close_stockfish()
+        self.sf_failed = False      # dar otra oportunidad si se vuelve a elegir
+        save_setting("ai_engine", value)
 
     def maybe_start_ai(self):
         """Si es vs IA y le toca a la IA (p.ej. el jugador eligió negras),
@@ -1649,6 +1720,9 @@ class CabreChess:
             self.ai_result_move = None
         self.ai_thread = None
         self.ai_thinking = False
+        if self.sf_error_pending:
+            self.sf_error_pending = False
+            self.toast("Stockfish no respondió: juega el motor propio")
         if self.game_over:      # p.ej. a la IA se le cayó la bandera
             return
         if move and move in self.board.legal_moves:
@@ -2474,12 +2548,7 @@ class CabreChess:
                     self.ask_load_fen()
                 return
 
-        setters = [
-            lambda v: setattr(self, "ai_level", v),
-            lambda v: setattr(self, "player_color_choice", v),
-            lambda v: setattr(self, "time_selected", v),
-        ]
-        for (_lbl, _y, _acc, options), setter in zip(self.menu_option_rows(), setters):
+        for _lbl, _y, _acc, options, setter in self.menu_option_rows_with_setters():
             for _text, rect, _sel, value in options:
                 if rect.collidepoint(mx, my):
                     setter(value)
@@ -2548,6 +2617,7 @@ class CabreChess:
             self.update()
             self.draw()
             self.clock.tick(60)
+        self.close_stockfish()
         pygame.quit()
         sys.exit()
 

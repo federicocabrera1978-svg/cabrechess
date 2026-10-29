@@ -47,7 +47,7 @@ PANEL_X         = BOARD_X + BOARD_SIZE + 16
 # Layout del menú principal (filas de opciones)
 MENU_OPT_X      = WINDOW_W // 2 - 200      # columna de etiquetas
 MENU_BTN_X      = WINDOW_W // 2 - 80       # primera columna de botones
-MENU_ROW_Y      = (590, 628, 666)          # dificultad / color / tiempo
+MENU_ROW_Y      = (590, 628, 666, 704)     # dificultad / color / tiempo / rival (si hay Stockfish)
 
 # Piezas Unicode
 PIECE_UNICODE = {
@@ -64,3 +64,6 @@ PIECE_UNICODE = {
     (chess.KNIGHT, chess.BLACK): '♞',
     (chess.PAWN,   chess.BLACK): '♟',
 }
+
+# Nivel del menú (1-6) -> "Skill Level" de Stockfish (0-20), para el rival opcional.
+STOCKFISH_SKILL = {1: 0, 2: 3, 3: 6, 4: 10, 5: 15, 6: 20}

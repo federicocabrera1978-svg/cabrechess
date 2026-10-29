@@ -7,19 +7,22 @@
 
 settings.json (opcional):
     {"stockfish_path": "C:/ruta/a/stockfish.exe", "analysis_depth": 3, "sound": true,
-     "board_theme": "marron"}
+     "board_theme": "marron", "ai_engine": "cabrechess"}
 "sound": false silencia el juego (también se cambia con la tecla M).
 "board_theme": marron / azul / verde / gris (también se cambia con la tecla T).
 stockfish_path vacío (por defecto) = se usa solo el motor propio, dentro del
 proceso. También se puede definir con la variable CABRECHESS_STOCKFISH.
+"ai_engine": cabrechess / stockfish = rival en "Jugar contra IA". Stockfish solo
+se usa si además hay stockfish_path (se elige en el menú).
 """
 import json
 import os
 import sys
 from pathlib import Path
 
+AI_ENGINES = ("cabrechess", "stockfish")
 DEFAULTS = {"stockfish_path": "", "analysis_depth": 3, "sound": True,
-            "board_theme": "marron"}
+            "board_theme": "marron", "ai_engine": "cabrechess"}
 
 
 def data_dir():
@@ -56,6 +59,10 @@ def load_settings(path=None):
     from .constants import BOARD_THEMES
     if cfg["board_theme"] not in BOARD_THEMES:
         cfg["board_theme"] = DEFAULTS["board_theme"]
+    if cfg["ai_engine"] not in AI_ENGINES:
+        cfg["ai_engine"] = DEFAULTS["ai_engine"]
+    if not isinstance(cfg["stockfish_path"], str):
+        cfg["stockfish_path"] = ""
     return cfg
 
 
