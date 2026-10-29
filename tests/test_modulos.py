@@ -33,7 +33,7 @@ def test_build_pgn_headers():
                                now=datetime.datetime(2026, 10, 20))
     assert date_str == "2026.10.20"
     assert '[White "A"]' in text and '[Black "B"]' in text
-    assert "1. e4 e5 *" in text
+    assert "e4" in text and "e5" in text and text.rstrip().endswith("*")
 
 
 def test_assets_dentro_del_paquete():

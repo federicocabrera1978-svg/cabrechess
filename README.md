@@ -45,7 +45,8 @@ Por Federico Cabrera.
   promoción con selector.
 - **Nombre de la apertura** con su código ECO arriba de la lista de jugadas (reconoce
   transposiciones) y en los headers `ECO`/`Opening` del PGN.
-- **Exportar a PGN** (se abre en Lichess, ChessBase, etc.).
+- **Exportar a PGN** (se abre en Lichess, ChessBase, etc.) y **cargar PGN o FEN**
+  desde el menú (botones *Cargar PGN* / *Cargar FEN*), para revisar en análisis.
 - Piezas **cburnett** (las de Lichess) y ejecutable para Windows con checksum SHA-256.
 
 ## Partidas guardadas y análisis
@@ -81,6 +82,7 @@ Por Federico Cabrera.
 | Reiniciar la partida | `R` |
 | Volver al menú / salir | `Esc` |
 | Guardar PGN | Botón del disquete o "Guardar PGN" al terminar (sin diálogo disponible, se guarda en `~/Documents/CabreChess/`) |
+| Cargar PGN / FEN | Botones del menú; el PGN abre un archivo y el FEN pide pegar la posición |
 | Pantalla completa | `F11` o `Alt+Enter` (la ventana también se puede redimensionar y maximizar) |
 | Cerrar / reabrir el panel de fin de partida | `Esc` o "Cerrar" / "Resultado" |
 | Revisar la partida terminada | `←` `→` `Inicio` `Fin`, la barra `|< < > >|`, o deshacer (`Ctrl+Z` / ←): con la partida terminada no deshace jugadas, solo retrocede en la revisión |
@@ -181,7 +183,7 @@ cabrechess/
 ├── constants.py   # tamaños de ventana, colores, glifos
 ├── engine.py      # motor propio (alfa-beta iterativo + quietud + MVV-LVA)
 ├── clock.py       # formato del reloj y resultado por bandera
-├── pgn.py         # exportación a PGN
+├── pgn.py         # exportación e importación PGN/FEN
 ├── openings.py    # nombres de aperturas (ECO), búsqueda por posición
 ├── sprites.py     # piezas cburnett / dibujadas, ícono, ubicación de assets
 ├── ui.py          # interfaz pygame (clase CabreChess, loop, eventos)

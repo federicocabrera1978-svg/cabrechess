@@ -47,7 +47,7 @@ PANEL_X         = BOARD_X + BOARD_SIZE + 16
 # Layout del menú principal (filas de opciones)
 MENU_OPT_X      = WINDOW_W // 2 - 200      # columna de etiquetas
 MENU_BTN_X      = WINDOW_W // 2 - 80       # primera columna de botones
-MENU_ROW_Y      = (560, 598, 636)          # dificultad / color / tiempo
+MENU_ROW_Y      = (590, 628, 666)          # dificultad / color / tiempo
 
 # Piezas Unicode
 PIECE_UNICODE = {

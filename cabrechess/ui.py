@@ -59,7 +59,8 @@ from .endings import (
     resign_end,
 )
 from .engine import AI_LEVELS, DEFAULT_AI_LEVEL, SimpleEngine, ai_level, ai_time_budget
-from .pgn import build_pgn, default_pgn_path, write_pgn
+from .pgn import (build_pgn, default_pgn_path, write_pgn,
+                  parse_pgn, parse_fen, moves_from_game, read_pgn_file)
 from .settings import load_settings, save_setting
 from .sounds import LOW_TIME_SECONDS, SoundManager, sound_for_move
 from .sprites import PIECE_NAMES, load_window_icon, make_piece_shadow, make_piece_sprite
@@ -484,6 +485,14 @@ class CabreChess:
                 self.draw_icon(icon, (ix + 10, rect.centery), tc, size=18)
             self.screen.blit(lbl, (ix + 28, rect.centery - lbl.get_height() // 2))
 
+        for label, _action, color, rect in self.menu_load_buttons():
+            hovered = rect.collidepoint(pygame.mouse.get_pos())
+            pygame.draw.rect(self.screen, color if hovered else (40, 40, 37), rect, border_radius=6)
+            pygame.draw.rect(self.screen, color, rect, 1, border_radius=6)
+            lbl = self.font_small.render(label, True, TEXT_BRIGHT if hovered else TEXT_COLOR)
+            self.screen.blit(lbl, (rect.centerx - lbl.get_width() // 2,
+                                  rect.centery - lbl.get_height() // 2))
+
         # Opciones (dificultad, color, tiempo) — etiqueta en su propia columna
         for row_label, row_y, accent, options in self.menu_option_rows():
             lbl = self.font_small.render(row_label, True, TEXT_DIM)
@@ -510,6 +519,18 @@ class CabreChess:
         return [(label, icon, action, color,
                  pygame.Rect(WINDOW_W//2 - 160, 290 + i*62, 320, 50))
                 for i, (label, icon, action, color) in enumerate(items)]
+
+    def menu_load_buttons(self):
+        """Botones compactos para cargar PGN o FEN (entre acciones y opciones)."""
+        y, h, gap = 542, 36, 10
+        w = (320 - gap) // 2
+        x0 = WINDOW_W // 2 - 160
+        return [
+            ("Cargar PGN", "load_pgn", (120, 160, 200),
+             pygame.Rect(x0, y, w, h)),
+            ("Cargar FEN", "load_fen", (120, 160, 200),
+             pygame.Rect(x0 + w + gap, y, w, h)),
+        ]
 
     def menu_option_rows(self):
         def row(y, specs, w, current):
@@ -2046,42 +2067,117 @@ class CabreChess:
             self.saved_confirm_delete = None
             self.refresh_saved_games()
 
-    def load_saved_game(self, game_id):
-        """Abre una partida de la base en modo análisis, congelada en su
-        resultado, para revisarla jugada por jugada con el análisis del motor."""
-        import io
-
-        import chess.pgn
-        db = self.get_db()
-        row = db.get_game(game_id) if db else None
-        if row is None:
-            self.toast("No se encontró la partida")
-            return False
-        game = chess.pgn.read_game(io.StringIO(row["pgn"]))
-        if game is None:
-            self.toast("PGN inválido")
-            return False
-        self.start_game("analysis")
-        self.board = game.board()            # respeta [FEN] si no arrancó de la inicial
-        self.loaded_game_id = game_id
-        self._game_over_seen = True          # no abrir panel ni autoguardar
-        self.silent = True                   # reconstruir sin sonidos
+    def ask_load_pgn(self):
+        """Diálogo para abrir un archivo .pgn y cargarlo en análisis."""
         try:
-            for move in game.mainline_moves():
-                if move not in self.board.legal_moves:
-                    break
+            import tkinter
+            import tkinter.filedialog
+            root = tkinter.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            filename = tkinter.filedialog.askopenfilename(
+                defaultextension=".pgn",
+                filetypes=[("PGN", "*.pgn"), ("Todos", "*.*")],
+                title="Cargar partida PGN",
+            )
+            root.destroy()
+        except tkinter.TclError:
+            self.toast("No se pudo abrir el diálogo")
+            return False
+        if not filename:
+            return False
+        text, err = read_pgn_file(filename)
+        if err:
+            self.toast(err)
+            return False
+        return self.load_pgn_text(text)
+
+    def ask_load_fen(self):
+        """Pide un FEN y abre esa posición en análisis."""
+        try:
+            import tkinter
+            import tkinter.simpledialog
+            root = tkinter.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            fen = tkinter.simpledialog.askstring(
+                "Cargar FEN", "Pegá la posición en notación FEN:", parent=root)
+            root.destroy()
+        except tkinter.TclError:
+            self.toast("No se pudo abrir el diálogo")
+            return False
+        if fen is None:
+            return False
+        return self.load_fen_text(fen)
+
+    def load_pgn_text(self, text, *, game_id=None, result=None, termination=None,
+                      white=None, black=None):
+        """Carga un PGN en modo análisis, listo para revisar con ◀ ▶."""
+        game, err = parse_pgn(text)
+        if err:
+            self.toast(err)
+            return False
+        white = white or game.headers.get("White") or "Blancas"
+        black = black or game.headers.get("Black") or "Negras"
+        result = result or game.headers.get("Result") or "*"
+        termination = termination or game.headers.get("Termination") or "normal"
+        self.start_game("analysis")
+        self.board = game.board()
+        self.loaded_game_id = game_id
+        self._game_over_seen = True
+        self.silent = True
+        try:
+            for move in moves_from_game(game):
                 self.execute_move(move)
             self.anim_move = None
-            self.game_over = False            # forzar el resultado guardado
-            self.end_game(row["termination"], row["result"])
+            if result and result != "*":
+                self.game_over = False
+                self.end_game(termination, result)
+            else:
+                self.game_over = False
+                self.game_over_panel = False
+                self.result = "*"
+                self.termination = None
         finally:
             self.silent = False
         self.particles = []
         self._game_over_seen = True
         self.game_over_panel = False
         self.review_index = 0 if self.board.move_stack else None
-        self.loaded_names = (row["white"], row["black"])
+        self.loaded_names = (white, black)
+        self.toast("PGN cargado")
         return True
+
+    def load_fen_text(self, fen):
+        """Abre una posición FEN en modo análisis."""
+        board, err = parse_fen(fen)
+        if err:
+            self.toast(err)
+            return False
+        self.start_game("analysis")
+        self.board = board
+        self.move_history_san = []
+        self.last_move = None
+        self.game_over = False
+        self.game_over_panel = False
+        self.review_index = None
+        self.loaded_game_id = None
+        self.loaded_names = None
+        self.particles = []
+        self.update_eval()
+        self.toast("FEN cargado")
+        return True
+
+    def load_saved_game(self, game_id):
+        """Abre una partida de la base en modo análisis para revisarla."""
+        db = self.get_db()
+        row = db.get_game(game_id) if db else None
+        if row is None:
+            self.toast("No se encontró la partida")
+            return False
+        return self.load_pgn_text(
+            row["pgn"], game_id=game_id, result=row["result"],
+            termination=row["termination"], white=row["white"], black=row["black"])
 
     # ─── EVENTOS ────────────────────────────────────────────────────────────────
     def handle_events(self):
@@ -2369,6 +2465,13 @@ class CabreChess:
                     self.open_saved_games()
                 else:
                     self.start_game(action)
+                return
+        for _label, action, _color, rect in self.menu_load_buttons():
+            if rect.collidepoint(mx, my):
+                if action == "load_pgn":
+                    self.ask_load_pgn()
+                elif action == "load_fen":
+                    self.ask_load_fen()
                 return
 
         setters = [
