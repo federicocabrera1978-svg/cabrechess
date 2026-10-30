@@ -87,7 +87,9 @@ Por Federico Cabrera.
 | Cargar PGN / FEN | Botones del menú; el PGN abre un archivo y el FEN pide pegar la posición |
 | Pantalla completa | `F11` o `Alt+Enter` (la ventana también se puede redimensionar y maximizar) |
 | Cerrar / reabrir el panel de fin de partida | `Esc` o "Cerrar" / "Resultado" |
-| Revisar la partida terminada | `←` `→` `Inicio` `Fin`, la barra `|< < > >|`, o deshacer (`Ctrl+Z` / ←): con la partida terminada no deshace jugadas, solo retrocede en la revisión |
+| Revisar la partida terminada | `←` `→` `Inicio` `Fin`, la barra `|< < > >|`, click en una jugada de la lista, o deshacer (`Ctrl+Z` / ←): con la partida terminada no deshace jugadas, solo retrocede en la revisión |
+| Recorrer la lista de jugadas | Rueda del mouse sobre la lista |
+| Copiar FEN / PGN al portapapeles | `C` copia el FEN de la posición que se ve; `Shift+C` copia el PGN de la partida |
 
 ## Requisitos y cómo ejecutarlo
 
@@ -220,7 +222,7 @@ built reproducibly by GitHub Actions with a SHA-256 checksum.
 **Saved games & analysis:** every finished game is stored automatically in a local SQLite database (`%APPDATA%\\CabreChess\\partidas.db` on Windows, `~/.cabrechess/` elsewhere); browse, open in analysis, export or delete them from *Partidas guardadas*. Analysis shows the best move (arrow + SAN) and evaluation using the built-in engine in-process; Stockfish can optionally be configured via `settings.json` (`stockfish_path`) or `CABRECHESS_STOCKFISH`; once configured it can also be picked as the opponent in the menu (*Rival IA*), with levels 1-6 mapped to its Skill Level.
 
 **Controls:** click or drag to move · right-click/`Esc` cancels a premove · `Ctrl+Z` undo ·
-`F` flip board · `M` mute/unmute sound · `T` board theme (brown, blue, green, grey) · `R` restart · `F11`/`Alt+Enter` fullscreen (window is resizable) · `Esc` closes the game-over panel / back to menu / quit · after the game, `←` `→` `Home` `End` review the moves.
+`F` flip board · `M` mute/unmute sound · `T` board theme (brown, blue, green, grey) · `R` restart · `F11`/`Alt+Enter` fullscreen (window is resizable) · `Esc` closes the game-over panel / back to menu / quit · after the game, `←` `→` `Home` `End` or a click on a move review the moves · mouse wheel scrolls the move list · `C` copies the FEN, `Shift+C` the PGN.
 
 **Run it** (Python 3.9+):
 
