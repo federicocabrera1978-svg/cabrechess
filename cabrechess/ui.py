@@ -10,6 +10,7 @@ import chess
 import pygame
 
 from ._version import __version__
+from .clipboard import copy_text
 from .clock import TIME_INCREMENT, TIME_OPTIONS, format_clock
 from .constants import (
     ACCENT,
@@ -27,6 +28,7 @@ from .constants import (
     MENU_OPT_X,
     MENU_ROW_Y,
     MOVE_ACTIVE,
+    MOVE_HOVER,
     PANEL_COLOR,
     PANEL_W,
     PANEL_X,
@@ -103,6 +105,8 @@ class CabreChess:
         self.move_history = []        # lista de strings UCI
         self.move_history_san = []    # lista SAN
         self.history_scroll = 0
+        self.history_scroll_manual = None   # None = auto-scroll a la jugada activa
+        self._history_scroll_ply = None
         self.promotion_pending = None
         self.promotion_sq = None
         self.game_over = False
@@ -997,6 +1001,101 @@ class CabreChess:
             self.screen.blit(p_surf, (bx + 10, by + ph // 2 - 18 - 2))
             self.screen.blit(n_surf, (bx + 55, by + ph // 2 - n_surf.get_height() // 2 - 4))
 
+    # ─── HISTORIAL DE JUGADAS (lista navegable) ─────────────────────────────────
+    HISTORY_ROW_H = 24
+
+    def history_layout(self):
+        """Zona de la lista de jugadas: (clip_rect, alto de fila, top relativo)."""
+        top = 54 if self.analysis_active() else 30
+        list_h = BOARD_SIZE - (140 if self.game_over and not self.game_over_panel else 80) - (top - 30)
+        clip_rect = pygame.Rect(PANEL_X + 5, BOARD_Y + top, PANEL_W - 20, list_h)
+        return clip_rect, self.HISTORY_ROW_H, top
+
+    def history_rows(self):
+        """(filas visibles, filas totales) de la lista de jugadas."""
+        clip_rect, row_h, _top = self.history_layout()
+        return clip_rect.height // row_h, (len(self.move_history_san) + 1) // 2 + 1
+
+    def update_history_scroll(self):
+        """Fija history_scroll: el que eligió el usuario con la rueda o, si no,
+        el que deja a la vista la jugada activa. Al cambiar la jugada activa
+        se vuelve al auto-scroll."""
+        visible_rows, total_rows = self.history_rows()
+        max_scroll = max(0, total_rows - visible_rows)
+        active = self.active_ply()
+        if active != self._history_scroll_ply:
+            self._history_scroll_ply = active
+            self.history_scroll_manual = None
+        if self.history_scroll_manual is not None:
+            self.history_scroll = max(0, min(max_scroll, self.history_scroll_manual))
+        elif total_rows > visible_rows:
+            active_row = max(0, active) // 2
+            self.history_scroll = max(0, min(max_scroll, active_row - visible_rows + 2))
+        else:
+            self.history_scroll = 0
+        return self.history_scroll
+
+    def history_move_rects(self):
+        """[(ply, rect)] de las jugadas visibles en la lista (ply 0 = 1. blancas).
+        Lo usan el dibujo y los clics, así no se desfasan."""
+        clip_rect, row_h, top = self.history_layout()
+        out = []
+        for ply in range(len(self.move_history_san)):
+            row = ply // 2
+            y = BOARD_Y + top + 2 + (row - self.history_scroll) * row_h
+            if y < BOARD_Y + top - 2 or y > BOARD_Y + BOARD_SIZE - 30:
+                continue
+            x = PANEL_X + (35 if ply % 2 == 0 else 95)
+            rect = pygame.Rect(x, y - 2, 60, row_h - 2).clip(clip_rect)
+            if rect.height > 0:
+                out.append((ply, rect))
+        return out
+
+    def history_navigable(self):
+        """Se puede saltar a una jugada con clic: partida terminada (panel cerrado)."""
+        return self.game_over and not self.game_over_panel and not self.confirm
+
+    def handle_history_click(self, pos):
+        """Clic en una jugada de la lista: muestra la posición después de ella."""
+        if not self.history_navigable():
+            return False
+        self.update_history_scroll()
+        for ply, rect in self.history_move_rects():
+            if rect.collidepoint(pos):
+                self.review_step(to=ply + 1)
+                return True
+        return False
+
+    def scroll_history(self, dy):
+        """Rueda del mouse sobre la lista: dy > 0 sube, dy < 0 baja."""
+        visible_rows, total_rows = self.history_rows()
+        max_scroll = max(0, total_rows - visible_rows)
+        self.update_history_scroll()
+        self.history_scroll_manual = max(0, min(max_scroll, self.history_scroll - dy))
+        self.history_scroll = self.history_scroll_manual
+        return self.history_scroll
+
+    def mouse_over_history(self, pos):
+        clip_rect, _row_h, _top = self.history_layout()
+        return clip_rect.collidepoint(pos)
+
+    def copy_fen(self):
+        """Copia al portapapeles el FEN de la posición que se ve en pantalla."""
+        fen = self.displayed_board().fen()
+        ok = copy_text(fen)
+        self.toast("FEN copiado al portapapeles" if ok else "No se pudo usar el portapapeles")
+        return fen if ok else None
+
+    def copy_pgn(self):
+        """Copia al portapapeles el PGN de la partida completa."""
+        if not self.move_history_san:
+            self.toast("No hay movimientos para copiar.")
+            return None
+        pgn_text, _date = self.build_pgn()
+        ok = copy_text(pgn_text)
+        self.toast("PGN copiado al portapapeles" if ok else "No se pudo usar el portapapeles")
+        return pgn_text if ok else None
+
     def draw_side_panel(self):
         # Panel de movimientos
         panel_rect = pygame.Rect(PANEL_X, BOARD_Y, PANEL_W - 10, BOARD_SIZE)
@@ -1015,26 +1114,17 @@ class CabreChess:
             self.screen.blit(title, (PANEL_X + 10, BOARD_Y + 10))
 
         # Movimientos en pares
-        top = 30
         if self.analysis_active():
             self.draw_analysis_line(BOARD_Y + 30)
-            top = 54
-        list_h = BOARD_SIZE - (140 if self.game_over and not self.game_over_panel else 80) - (top - 30)
-        clip_rect = pygame.Rect(PANEL_X + 5, BOARD_Y + top, PANEL_W - 20, list_h)
+        clip_rect, row_h, top = self.history_layout()
+        self.update_history_scroll()
         self.screen.set_clip(clip_rect)
 
-        row_h = 24
-        visible_rows = (clip_rect.height) // row_h
-        total_rows = (len(self.move_history_san) + 1) // 2 + 1
-
-        # Auto-scroll para que se vea la jugada activa (la última, o la
-        # que se está revisando)
-        if total_rows > visible_rows:
-            active_row = max(0, self.active_ply()) // 2
-            self.history_scroll = max(0, min(total_rows - visible_rows,
-                                             active_row - visible_rows + 2))
-        else:
-            self.history_scroll = 0
+        # Con la partida terminada, la jugada bajo el mouse se marca (se puede clickear)
+        hover_ply = None
+        if self.history_navigable():
+            mpos = self.mouse_pos()
+            hover_ply = next((p for p, r in self.history_move_rects() if r.collidepoint(mpos)), None)
 
         for i in range(0, len(self.move_history_san), 2):
             row = i // 2
@@ -1049,7 +1139,7 @@ class CabreChess:
             # Jugada blanca
             if i < len(self.move_history_san):
                 is_last = i == self.active_ply()
-                bg = MOVE_ACTIVE if is_last else None
+                bg = MOVE_ACTIVE if is_last else (MOVE_HOVER if i == hover_ply else None)
                 if bg:
                     pygame.draw.rect(self.screen, bg,
                         (PANEL_X + 35, y-2, 60, row_h-2), border_radius=3)
@@ -1060,7 +1150,7 @@ class CabreChess:
             # Jugada negra
             if i+1 < len(self.move_history_san):
                 is_last = i+1 == self.active_ply()
-                bg = MOVE_ACTIVE if is_last else None
+                bg = MOVE_ACTIVE if is_last else (MOVE_HOVER if i + 1 == hover_ply else None)
                 if bg:
                     pygame.draw.rect(self.screen, bg,
                         (PANEL_X + 95, y-2, 60, row_h-2), border_radius=3)
@@ -1739,6 +1829,7 @@ class CabreChess:
         self.move_history = []
         self.move_history_san = []
         self.history_scroll = 0
+        self.history_scroll_manual = None
         self.promotion_pending = None
         self.game_over = False
         self.game_over_msg = ""
@@ -2274,6 +2365,10 @@ class CabreChess:
                 self.saved_scroll = max(0, min(max(0, len(self.saved_games) - self.SAVED_ROWS),
                                                self.saved_scroll - event.y))
 
+            elif event.type == pygame.MOUSEWHEEL and self.mode != "menu":
+                if self.mouse_over_history(self.mouse_pos()):
+                    self.scroll_history(event.y)
+
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_F11 or (
                         event.key == pygame.K_RETURN and event.mod & pygame.KMOD_ALT):
@@ -2300,6 +2395,11 @@ class CabreChess:
                     self.toggle_sound()
                 elif event.key == pygame.K_t:
                     self.cycle_board_theme()
+                elif event.key == pygame.K_c and self.mode != "menu":
+                    if event.mod & pygame.KMOD_SHIFT:
+                        self.copy_pgn()
+                    else:
+                        self.copy_fen()
                 elif event.key == pygame.K_r:
                     self.reset_game()
                 elif event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL):
@@ -2356,6 +2456,9 @@ class CabreChess:
             return
         # Partida terminada, panel cerrado: barra de revisión
         if self.game_over and self.handle_review_click(pos):
+            return
+        # Clic en una jugada de la lista (partida terminada)
+        if self.handle_history_click(pos):
             return
 
         # Diálogo de confirmación (abandonar / tablas)

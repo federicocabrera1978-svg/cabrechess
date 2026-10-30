@@ -41,6 +41,7 @@ PREMOVE_SQ      = (200,  80,  80)    # rojo-naranja para premove (igual Lichess)
 PREMOVE_ALPHA   = 170
 MOVE_BG         = ( 38,  37,  34)
 MOVE_ACTIVE     = ( 55,  54,  50)
+MOVE_HOVER      = ( 44,  43,  40)
 PANEL_W         = WINDOW_W - BOARD_X - BOARD_SIZE - 20
 PANEL_X         = BOARD_X + BOARD_SIZE + 16
 

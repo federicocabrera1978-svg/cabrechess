@@ -6,6 +6,18 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Historial navegable y portapapeles (B8)
+- Con la partida terminada, **click en una jugada** de la lista para ver la
+  posición después de ella (la jugada bajo el mouse se marca). Click en la
+  última vuelve a la posición final.
+- La **rueda del mouse** sobre la lista la recorre en partidas largas; al
+  cambiar de jugada vuelve a seguir la jugada activa.
+- **`C` copia el FEN** de la posición que se ve en pantalla (también la que se
+  está revisando) y **`Shift+C` copia el PGN** de la partida. Usa el
+  portapapeles de pygame y, si no está, el de tkinter; si ninguno anda, avisa.
+- La lista usa una sola definición de posiciones para dibujar y para los clicks.
+- Tests en `tests/test_historial_navegable.py`.
+
 ### PGN: cargar archivo y FEN (B6)
 - En el menú hay **Cargar PGN** y **Cargar FEN**. El PGN se abre con el diálogo de
   archivo; el FEN se pega en un cuadro de texto. Ambos entran en modo análisis con
