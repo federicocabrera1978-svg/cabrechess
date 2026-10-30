@@ -35,7 +35,7 @@ def test_version_info_del_exe_coincide():
 
 def test_changelog_tiene_seccion_de_la_version():
     notes = release_notes.changelog_section(cabrechess.__version__)
-    assert "Temas de tablero" in notes
+    assert "Stockfish como rival" in notes
     assert not re.search(r"^## ", notes, re.M)
     assert not re.search(r"^\[\d", notes, re.M)  # sin links del pie
 
@@ -49,4 +49,4 @@ def test_release_notes_rechaza_etiqueta_distinta():
 def test_release_notes_escribe_archivo_utf8(tmp_path):
     out = tmp_path / "notes.md"
     release_notes.main(["release_notes.py", f"v{cabrechess.__version__}", str(out)])
-    assert "Temas de tablero" in out.read_text(encoding="utf-8")
+    assert "Stockfish como rival" in out.read_text(encoding="utf-8")
