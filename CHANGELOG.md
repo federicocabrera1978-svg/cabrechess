@@ -6,6 +6,15 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-30
+
+Mejor rival: IA más fuerte con 6 niveles, Stockfish opcional como oponente,
+cargar/exportar PGN y FEN, e historial navegable al terminar la partida.
+
+### Versión
+- La versión pasa a **1.2.0** (`cabrechess/_version.py`, menú, `.exe` y
+  notas del release de GitHub).
+
 ### Historial navegable y portapapeles (B8)
 - Con la partida terminada, **click en una jugada** de la lista para ver la
   posición después de ella (la jugada bajo el mouse se marca). Click en la
@@ -271,5 +280,6 @@ Primera versión publicada.
   (regla FIDE 6.9).
 - Las partículas de jaque no aparecían si el rey estaba en a1.
 
-[Unreleased]: https://github.com/federicocabrera1978-svg/cabrechess/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/federicocabrera1978-svg/cabrechess/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/federicocabrera1978-svg/cabrechess/releases/tag/v1.2.0
 [1.1.0]: https://github.com/federicocabrera1978-svg/cabrechess/releases/tag/v1.1.0
