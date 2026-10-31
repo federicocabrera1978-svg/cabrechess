@@ -5,3 +5,8 @@ dist/
 out.log
 *.egg-info/
 dist-onedir/
+
+# Secretos locales (nunca subir)
+.env
+.env.*
+!.env.example
