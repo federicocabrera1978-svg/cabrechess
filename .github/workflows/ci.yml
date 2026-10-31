@@ -19,7 +19,7 @@ jobs:
       SDL_VIDEODRIVER: dummy
       SDL_AUDIODRIVER: dummy
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
         with:
@@ -42,7 +42,7 @@ jobs:
       SDL_VIDEODRIVER: dummy
       SDL_AUDIODRIVER: dummy
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -60,7 +60,7 @@ jobs:
     # - CabreChess-exe:   onefile (un solo .exe)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -76,14 +76,14 @@ jobs:
           if (!(Test-Path dist-onedir/CabreChess/CabreChess.exe)) { exit 1 }
           if (!(Test-Path dist-onedir/CabreChess/_internal/cabrechess/assets/pieces/cburnett/wK.png)) { exit 1 }
       - name: Upload onedir
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: CabreChess-win64
           path: dist-onedir/CabreChess/
           retention-days: 14
           if-no-files-found: error
       - name: Upload exe
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: CabreChess-exe
           path: dist/CabreChess.exe
