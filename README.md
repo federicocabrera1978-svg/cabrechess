@@ -60,6 +60,11 @@ Por Federico Cabrera.
 - **Análisis**: en el modo Análisis y al revisar una partida terminada se muestran la
   **mejor jugada** (flecha verde + SAN) y la evaluación. Por defecto lo calcula el motor
   propio en un hilo del mismo proceso: no lanza programas externos.
+- **Errores marcados al terminar**: cuando termina la partida (o abrís una terminada)
+  se analizan todas las jugadas en segundo plano y se marcan en la lista las
+  imprecisiones (**?!**), los errores (**?**) y los errores graves (**??**), con el
+  mismo criterio que Lichess (cuánto bajan las chances de ganar). Abajo se ve el
+  conteo por bando, y el PGN exportado los incluye como `$6`, `$2` y `$4`.
 - **Stockfish (opcional, apagado por defecto)**: creá `settings.json` en la misma
   carpeta de datos con `{"stockfish_path": "C:/ruta/stockfish.exe"}` (o definí la
   variable `CABRECHESS_STOCKFISH`). Si la ruta no anda, vuelve solo al motor propio.

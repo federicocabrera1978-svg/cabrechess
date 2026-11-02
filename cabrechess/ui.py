@@ -51,6 +51,7 @@ from .display import (
     window_to_logical,
 )
 from .analysis import Analyzer
+from .review import MARK_COLORS, GameReview
 from .database import GameDB
 from .endings import (
     PGN_TERMINATION,
@@ -140,6 +141,7 @@ class CabreChess:
         self.silent = False             # True al reconstruir partidas (sin sonido)
         self.low_time_warned = set()    # colores ya avisados con reloj bajo
         self.analyzer = None            # análisis en segundo plano (lazy)
+        self.game_review = None         # ?!, ?, ?? de la partida terminada (lazy)
         self.db = None                  # partidas.db (lazy)
         self.result = "*"
         self.termination = ""
@@ -719,6 +721,7 @@ class CabreChess:
             # Partida terminada y panel cerrado: SIEMPRE se ve la barra de
             # revisión (antes solo aparecía tras retroceder una jugada)
             self.draw_review_bar()
+            self.draw_review_summary()
 
         # Thinking indicator
         if self.ai_thinking:
@@ -1007,7 +1010,9 @@ class CabreChess:
     def history_layout(self):
         """Zona de la lista de jugadas: (clip_rect, alto de fila, top relativo)."""
         top = 54 if self.analysis_active() else 30
-        list_h = BOARD_SIZE - (140 if self.game_over and not self.game_over_panel else 80) - (top - 30)
+        list_h = BOARD_SIZE - (158 if self.game_over and not self.game_over_panel else 80) - (top - 30)
+        if self.eval_graph_above_review():
+            list_h -= 70   # el gráfico de evaluación sube para no pisar la barra
         clip_rect = pygame.Rect(PANEL_X + 5, BOARD_Y + top, PANEL_W - 20, list_h)
         return clip_rect, self.HISTORY_ROW_H, top
 
@@ -1050,6 +1055,12 @@ class CabreChess:
             if rect.height > 0:
                 out.append((ply, rect))
         return out
+
+    def draw_move_mark(self, ply, x, y):
+        mark = self.move_mark(ply)
+        if mark:
+            surf = self.font_tiny.render(mark, True, MARK_COLORS[mark])
+            self.screen.blit(surf, (x + 1, y + 1))
 
     def history_navigable(self):
         """Se puede saltar a una jugada con clic: partida terminada (panel cerrado)."""
@@ -1146,6 +1157,7 @@ class CabreChess:
                 ms = self.font_small.render(self.move_history_san[i], True,
                     TEXT_BRIGHT if is_last else TEXT_COLOR)
                 self.screen.blit(ms, (PANEL_X + 38, y))
+                self.draw_move_mark(i, PANEL_X + 38 + ms.get_width(), y)
 
             # Jugada negra
             if i+1 < len(self.move_history_san):
@@ -1157,6 +1169,7 @@ class CabreChess:
                 ms = self.font_small.render(self.move_history_san[i+1], True,
                     TEXT_BRIGHT if is_last else TEXT_COLOR)
                 self.screen.blit(ms, (PANEL_X + 98, y))
+                self.draw_move_mark(i + 1, PANEL_X + 98 + ms.get_width(), y)
 
         self.screen.set_clip(None)
 
@@ -1502,6 +1515,49 @@ class CabreChess:
         self.game_over_panel = False
         self._game_over_seen = False
         self.review_index = None
+        if getattr(self, "game_review", None) is not None:
+            self.game_review.stop()
+        self.game_review = None
+
+    # ─── MARCAR ERRORES (?!, ?, ??) AL TERMINAR ─────────────────────────────────
+    def maybe_start_review(self):
+        """Con la partida terminada, analiza todas las jugadas en segundo plano."""
+        if self.game_over and self.game_review is None and self.board.move_stack:
+            self.game_review = GameReview(self.board).start()
+        return self.game_review
+
+    def move_mark(self, ply):
+        """'?!', '?', '??' o '' para la jugada `ply` (0 = 1. blancas)."""
+        if self.game_review is None:
+            return ""
+        return self.game_review.mark(ply)
+
+    def review_summary_parts(self):
+        """[(texto, color)] de la línea resumen bajo la lista de jugadas."""
+        rv = self.game_review
+        if rv is None:
+            return []
+        if not rv.done():
+            return [(f"Buscando errores… {int(rv.progress() * 100)}%", TEXT_DIM)]
+        counts = rv.summary()
+        parts = []
+        for color, name in ((chess.WHITE, "Blancas"), (chess.BLACK, "Negras")):
+            parts.append((f"{name}:", TEXT_DIM))
+            for mark in ("??", "?", "?!"):
+                parts.append((f"{counts[color][mark]}{mark}", MARK_COLORS[mark]))
+        return parts
+
+    def draw_review_summary(self):
+        parts = self.review_summary_parts()
+        if not parts:
+            return
+        x, y = PANEL_X + 10, BOARD_Y + BOARD_SIZE - 124
+        for i, (text, color) in enumerate(parts):
+            surf = self.font_tiny.render(text, True, color)
+            if i and text.endswith(":"):
+                x += 10
+            self.screen.blit(surf, (x, y))
+            x += surf.get_width() + 6
 
     def draw_thinking(self):
         elapsed = time.time() - self.ai_think_start
@@ -1929,10 +1985,16 @@ class CabreChess:
         if move:
             self.attempt_move(move)
 
+    def eval_graph_above_review(self):
+        """En análisis con la partida terminada, el gráfico va arriba de la
+        barra de revisión y del resumen de errores (antes se pisaban)."""
+        return (self.mode == "analysis" and len(self.eval_history) > 1
+                and self.game_over and not self.game_over_panel)
+
     def draw_eval_graph(self):
         """Mini gráfico de evaluación a lo largo de la partida."""
         gx = PANEL_X + 5
-        gy = BOARD_Y + BOARD_SIZE - 110
+        gy = BOARD_Y + BOARD_SIZE - (190 if self.eval_graph_above_review() else 110)
         gw = PANEL_W - 20
         gh = 50
 
@@ -2062,6 +2124,8 @@ class CabreChess:
         if self.game_over:
             extra["result"] = self.result
             extra["termination"] = PGN_TERMINATION.get(self.termination, "normal")
+        if self.game_review is not None and self.game_review.done():
+            extra["nags"] = self.game_review.nags()
         return build_pgn(self.board, self.move_history_san, self.mode,
                          white_name, black_name, time_control=self.time_control(), **extra)
 
@@ -2685,6 +2749,7 @@ class CabreChess:
     def update(self):
         now = time.time()
         self.sync_game_over_panel()
+        self.maybe_start_review()
         self.request_analysis()
 
         # Temporizador — corre siempre excepto en menú, fin de juego o promoción
