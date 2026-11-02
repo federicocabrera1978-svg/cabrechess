@@ -6,6 +6,20 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Marcar errores al terminar la partida (parte de B9)
+- Al terminar la partida (o al abrir una terminada desde PGN o Partidas
+  guardadas) se analiza cada posición en segundo plano con el motor propio y se
+  marcan en la lista de jugadas las **imprecisiones (?!)**, los **errores (?)** y
+  los **errores graves (??)**, en amarillo, naranja y rojo.
+- Criterio de Lichess: se mide cuánto bajan las chances de ganar del bando que
+  movió (caída de 0,1 / 0,2 / 0,3), así no se marca como error una jugada en una
+  posición que ya estaba ganada o perdida por mucho.
+- Debajo de la lista, el **conteo por bando** (o el progreso mientras analiza).
+- **Guardar PGN** y **Shift+C** exportan las marcas como NAG (`$6`, `$2`, `$4`).
+- En análisis con la partida terminada, el gráfico de evaluación sube y ya no
+  pisa la barra de revisión.
+- Nuevo módulo `cabrechess/review.py` y tests en `tests/test_marcar_errores.py`.
+
 ## [1.2.0] - 2026-10-30
 
 Mejor rival: IA más fuerte con 6 niveles, Stockfish opcional como oponente,

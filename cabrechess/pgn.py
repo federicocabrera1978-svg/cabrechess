@@ -27,8 +27,10 @@ def game_result(board):
 
 
 def build_pgn(board, move_history_san, mode, white_name, black_name, now=None,
-              result=None, termination=None, time_control=None):
-    """Arma el texto PGN con chess.pgn. Devuelve (pgn_text, date_str)."""
+              result=None, termination=None, time_control=None, nags=None):
+    """Arma el texto PGN con chess.pgn. Devuelve (pgn_text, date_str).
+
+    `nags` ({ply: NAG}) agrega las marcas ?!, ?, ?? de la revisión."""
     import chess.pgn
 
     now = now or datetime.datetime.now()
@@ -62,10 +64,12 @@ def build_pgn(board, move_history_san, mode, white_name, black_name, now=None,
             node = node.add_variation(move)
             replay.push(move)
     else:
-        for move in moves:
+        for ply, move in enumerate(moves):
             if move not in replay.legal_moves:
                 break
             node = node.add_variation(move)
+            if nags and ply in nags:
+                node.nags.add(nags[ply])
             replay.push(move)
 
     opening = opening_for_board(board if moves else replay)
@@ -73,7 +77,8 @@ def build_pgn(board, move_history_san, mode, white_name, black_name, now=None,
         game.headers["ECO"] = opening[0]
         game.headers["Opening"] = opening[1]
 
-    exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=False)
+    # Los NAG ($2, $4, $6) salen solo con comments=True; la partida no tiene comentarios
+    exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=bool(nags))
     pgn_text = game.accept(exporter)
     if not pgn_text.endswith("\n"):
         pgn_text += "\n"
