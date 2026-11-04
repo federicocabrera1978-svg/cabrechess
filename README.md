@@ -72,6 +72,8 @@ Por Federico Cabrera.
   contra Stockfish; los niveles 1 a 6 usan su `Skill Level` (0 a 20).
   `analysis_depth` (1-5, por defecto 3) ajusta la profundidad del motor propio.
   `board_theme` (`marron`, `azul`, `verde` o `gris`) elige el tablero; también se cambia con `T`.
+  `support_prompt_every` (por defecto 5, `0` = nunca) fija cada cuántas partidas aparece
+  el aviso para apoyar en Ko-fi; el botón **Apoyar en Ko-fi** del menú está siempre.
 
 ## Controles
 
