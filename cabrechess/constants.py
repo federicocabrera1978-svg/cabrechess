@@ -37,6 +37,7 @@ ACCENT          = (138, 196,  33)    # verde Lichess
 ACCENT2         = ( 81, 150, 200)    # azul
 DANGER          = (220,  55,  55)
 BORDER_COLOR    = ( 55,  54,  50)
+KOFI_COLOR      = (255,  94,  91)    # rojo de Ko-fi
 PREMOVE_SQ      = (200,  80,  80)    # rojo-naranja para premove (igual Lichess)
 PREMOVE_ALPHA   = 170
 MOVE_BG         = ( 38,  37,  34)

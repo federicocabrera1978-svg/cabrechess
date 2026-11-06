@@ -20,6 +20,7 @@ from .constants import (
     BOARD_X,
     BOARD_Y,
     BORDER_COLOR,
+    KOFI_COLOR,
     DANGER,
     BOARD_THEMES,
     LAST_MOVE,
@@ -68,6 +69,7 @@ from .pgn import (build_pgn, default_pgn_path, write_pgn,
 from .settings import load_settings, save_setting
 from .sounds import LOW_TIME_SECONDS, SoundManager, sound_for_move
 from .sprites import PIECE_NAMES, load_window_icon, make_piece_shadow, make_piece_sprite
+from .support import KOFI_URL, open_kofi, should_prompt
 
 
 def menu_version_text():
@@ -132,6 +134,10 @@ class CabreChess:
         _cfg = load_settings()
         self.sound = SoundManager(enabled=_cfg.get("sound", True))
         self.board_theme = _cfg.get("board_theme", DEFAULT_THEME)
+        # Apoyar en Ko-fi: aviso discreto tras una partida, cada N partidas.
+        self.support_prompt_every = _cfg.get("support_prompt_every", 5)
+        self.support_games = _cfg.get("support_games", 0)
+        self.support_prompt = False     # aviso visible en el panel de fin
         # Rival opcional Stockfish (B4): solo si el usuario configuró la ruta.
         self.stockfish_path = _cfg.get("stockfish_path", "")
         self.ai_engine = _cfg.get("ai_engine", "cabrechess") if self.stockfish_path else "cabrechess"
@@ -320,6 +326,14 @@ class CabreChess:
             font = self.font_xl if size >= 30 else self.font_med
             surf = font.render("½", True, color)
             scr.blit(surf, (cx - surf.get_width() // 2, cy - surf.get_height() // 2))
+        elif kind == "coffee":   # taza de café (Ko-fi)
+            cup = pygame.Rect(cx - h + 1, cy - h // 2, size - 7, h + 3)
+            pygame.draw.rect(scr, color, cup, border_bottom_left_radius=5,
+                             border_bottom_right_radius=5)
+            pygame.draw.circle(scr, color, (cup.right, cup.centery - 1), size // 5, 2)
+            for dx in (-3, 2):
+                pygame.draw.line(scr, color, (cx + dx - 2, cy - h // 2 - 3),
+                                 (cx + dx - 2, cy - h + 1), 2)
         elif kind == "mate":     # dama cburnett
             surf = make_piece_sprite(chess.QUEEN, chess.BLACK, size)
             scr.blit(surf, (cx - surf.get_width() // 2, cy - surf.get_height() // 2))
@@ -515,6 +529,16 @@ class CabreChess:
                 t = self.font_small.render(text, True, BG_COLOR if selected else TEXT_COLOR)
                 self.screen.blit(t, (rect.centerx - t.get_width() // 2, rect.centery - t.get_height() // 2))
 
+        # Apoyar en Ko-fi (esquina inferior derecha, discreto)
+        label, rect = self.menu_support_button()
+        hovered = rect.collidepoint(mx, my)
+        pygame.draw.rect(self.screen, (45, 44, 41) if hovered else (35, 34, 31), rect, border_radius=6)
+        pygame.draw.rect(self.screen, KOFI_COLOR if hovered else BORDER_COLOR, rect, 1, border_radius=6)
+        tc = TEXT_BRIGHT if hovered else TEXT_COLOR
+        self.draw_icon("coffee", (rect.x + 20, rect.centery), KOFI_COLOR, size=18)
+        lbl = self.font_small.render(label, True, tc)
+        self.screen.blit(lbl, (rect.x + 36, rect.centery - lbl.get_height() // 2))
+
         # Incremento info
         level_name = ai_level(self.ai_level)["name"]
         if self.stockfish_path and self.ai_engine == "stockfish":
@@ -549,6 +573,32 @@ class CabreChess:
             ("Cargar FEN", "load_fen", (120, 160, 200),
              pygame.Rect(x0 + w + gap, y, w, h)),
         ]
+
+    def menu_support_button(self):
+        """Botón "Apoyar en Ko-fi" del menú: (etiqueta, rect)."""
+        return "Apoyar en Ko-fi", pygame.Rect(WINDOW_W - 190, WINDOW_H - 50, 170, 34)
+
+    def support_kofi(self):
+        """Abre Ko-fi en el navegador; si no se puede, copia el link."""
+        self.support_prompt = False
+        if open_kofi():
+            self.toast("Abriendo Ko-fi en el navegador. ¡Gracias!")
+        elif copy_text(KOFI_URL):
+            self.toast(f"No se pudo abrir el navegador: link copiado ({KOFI_URL})")
+        else:
+            self.toast(f"Apoyá en {KOFI_URL}")
+
+    def dismiss_support_prompt(self):
+        self.support_prompt = False
+
+    def count_finished_game(self):
+        """Suma una partida jugada (vs IA o PvP) y decide si mostrar el aviso."""
+        if self.mode not in ("vsai", "pvp") or self.loaded_game_id is not None:
+            return False
+        self.support_games += 1
+        save_setting("support_games", self.support_games)
+        self.support_prompt = should_prompt(self.support_games, self.support_prompt_every)
+        return self.support_prompt
 
     def menu_option_rows(self):
         return [r[:4] for r in self.menu_option_rows_with_setters()]
@@ -1404,6 +1454,34 @@ class CabreChess:
 
         hint = self.font_tiny.render("Esc: cerrar y ver el tablero", True, TEXT_DIM)
         self.screen.blit(hint, (WINDOW_W//2 - hint.get_width()//2, py + ph - 22))
+        if self.support_prompt:
+            self.draw_support_prompt()
+
+    def support_prompt_rects(self):
+        """Aviso de Ko-fi debajo del panel de fin: (franja, Apoyar, Ahora no)."""
+        pw, ph = self.GAME_OVER_PANEL
+        strip = pygame.Rect(WINDOW_W//2 - pw//2, WINDOW_H//2 + ph//2 + 12, pw, 44)
+        support = pygame.Rect(strip.right - 200, strip.y + 7, 96, 30)
+        later = pygame.Rect(strip.right - 98, strip.y + 7, 90, 30)
+        return strip, support, later
+
+    def draw_support_prompt(self):
+        strip, support, later = self.support_prompt_rects()
+        pygame.draw.rect(self.screen, PANEL_COLOR, strip, border_radius=10)
+        pygame.draw.rect(self.screen, BORDER_COLOR, strip, 1, border_radius=10)
+        self.draw_icon("coffee", (strip.x + 24, strip.centery), KOFI_COLOR, size=18)
+        txt = self.font_small.render("¿Te gusta CabreChess? Apoyalo en Ko-fi.", True, TEXT_COLOR)
+        self.screen.blit(txt, (strip.x + 42, strip.centery - txt.get_height() // 2))
+        mx, my = self.mouse_pos()
+        for rect, label, color in ((support, "Apoyar", KOFI_COLOR), (later, "Ahora no", None)):
+            hov = rect.collidepoint(mx, my)
+            if color:
+                pygame.draw.rect(self.screen, color if hov else (50, 49, 46), rect, border_radius=6)
+                pygame.draw.rect(self.screen, color, rect, 1, border_radius=6)
+            elif hov:
+                pygame.draw.rect(self.screen, (50, 49, 46), rect, border_radius=6)
+            ls = self.font_small.render(label, True, TEXT_BRIGHT if hov else TEXT_DIM if not color else TEXT_COLOR)
+            self.screen.blit(ls, (rect.centerx - ls.get_width() // 2, rect.centery - ls.get_height() // 2))
 
     # ─── REVISIÓN DE LA PARTIDA TERMINADA ───────────────────────────────────────
     def review_buttons(self):
@@ -1448,6 +1526,7 @@ class CabreChess:
 
     def close_game_over_panel(self):
         self.game_over_panel = False
+        self.support_prompt = False
 
     def sync_game_over_panel(self):
         """Muestra el panel una sola vez cuando termina la partida."""
@@ -1460,6 +1539,7 @@ class CabreChess:
             self.dragging = False
             self.drag_piece = None
             self.autosave_game()
+            self.count_finished_game()
 
     # ─── BASE DE DATOS DE PARTIDAS ──────────────────────────────────────────────
     def get_db(self):
@@ -1513,6 +1593,7 @@ class CabreChess:
 
     def clear_game_over_ui(self):
         self.game_over_panel = False
+        self.support_prompt = False
         self._game_over_seen = False
         self.review_index = None
         if getattr(self, "game_review", None) is not None:
@@ -2676,6 +2757,14 @@ class CabreChess:
     def handle_game_over_click(self, pos):
         if time.time() - getattr(self, "game_over_time", 0) < self.GAME_OVER_CLICK_GRACE:
             return False
+        if self.support_prompt:
+            _strip, support, later = self.support_prompt_rects()
+            if support.collidepoint(pos):
+                self.support_kofi()
+                return True
+            if later.collidepoint(pos):
+                self.dismiss_support_prompt()
+                return True
         for _label, action, rect in self.game_over_buttons():
             if rect.collidepoint(pos):
                 action()
@@ -2714,6 +2803,10 @@ class CabreChess:
                 elif action == "load_fen":
                     self.ask_load_fen()
                 return
+
+        if self.menu_support_button()[1].collidepoint(mx, my):
+            self.support_kofi()
+            return
 
         for _lbl, _y, _acc, options, setter in self.menu_option_rows_with_setters():
             for _text, rect, _sel, value in options:

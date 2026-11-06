@@ -6,6 +6,20 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Apoyar en Ko-fi
+- Nuevo botón **Apoyar en Ko-fi** (con una tacita) en la esquina inferior
+  derecha del menú: abre https://ko-fi.com/federicocabrera en el navegador del
+  sistema. Si no se puede abrir, copia el link al portapapeles y lo avisa.
+- Aviso **discreto y opcional** debajo del panel de fin de partida
+  ("¿Te gusta CabreChess? Apoyalo en Ko-fi.") con **Apoyar** y **Ahora no**.
+  Aparece como mucho una vez cada N partidas jugadas (vs IA o PvP) y se va con
+  *Ahora no*, *Cerrar* o Esc. No aparece al abrir partidas guardadas ni en análisis.
+- `settings.json`: `support_prompt_every` (por defecto 5; `0` lo apaga) y
+  `support_games` (contador que lleva el juego).
+- Nuevo módulo `cabrechess/support.py`. `webbrowser` se importa recién al hacer
+  click (nunca al arrancar); el test de "sin procesos externos" lo verifica.
+  Tests en `tests/test_apoyar_kofi.py`.
+
 ### Marcar errores al terminar la partida (parte de B9)
 - Al terminar la partida (o al abrir una terminada desde PGN o Partidas
   guardadas) se analiza cada posición en segundo plano con el motor propio y se

@@ -25,6 +25,9 @@ def _imports(path):
 # Único módulo que puede lanzar un proceso: el backend OPCIONAL de Stockfish,
 # que solo se importa si el usuario configuró stockfish_path.
 OPCIONAL_STOCKFISH = "stockfish.py"
+# Único módulo que puede abrir el navegador: el botón "Apoyar en Ko-fi", y
+# solo con un import diferido dentro de la función (nunca al cargar).
+APOYO = "support.py"
 
 
 def test_sin_imports_de_procesos_red_o_registro():
@@ -33,6 +36,8 @@ def test_sin_imports_de_procesos_red_o_registro():
             continue
         for mod in _imports(py):
             root = mod.split(".")[0]
+            if py.name == APOYO and mod == "webbrowser":
+                continue
             assert mod not in PROHIBIDOS and root not in PROHIBIDOS, f"{py.name} importa {mod}"
 
 
@@ -96,3 +101,13 @@ def test_stockfish_solo_importa_chess_engine_y_es_lazy():
                 assert node.module != "stockfish", f"{py.name} importa stockfish al cargar"
         usa = any(isinstance(n, ast.ImportFrom) and n.module == "stockfish" for n in ast.walk(tree))
         assert not usa or py.name in ("analysis.py", "ui.py"), py.name
+
+
+def test_webbrowser_solo_diferido_en_support():
+    tree = ast.parse((PKG / APOYO).read_text(encoding="utf-8"))
+    for node in tree.body:   # a nivel de módulo, nada de webbrowser
+        if isinstance(node, ast.Import):
+            assert all(a.name != "webbrowser" for a in node.names)
+    for py in PKG.glob("*.py"):
+        if py.name != APOYO:
+            assert "webbrowser" not in set(_imports(py)), py.name
