@@ -6,6 +6,8 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-07
+
 ### Apoyar en Ko-fi
 - Nuevo botón **Apoyar en Ko-fi** (con una tacita) en la esquina inferior
   derecha del menú: abre https://ko-fi.com/federicocabrera en el navegador del
@@ -308,6 +310,7 @@ Primera versión publicada.
   (regla FIDE 6.9).
 - Las partículas de jaque no aparecían si el rey estaba en a1.
 
-[Unreleased]: https://github.com/federicocabrera1978-svg/cabrechess/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/federicocabrera1978-svg/cabrechess/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/federicocabrera1978-svg/cabrechess/releases/tag/v1.3.0
 [1.2.0]: https://github.com/federicocabrera1978-svg/cabrechess/releases/tag/v1.2.0
 [1.1.0]: https://github.com/federicocabrera1978-svg/cabrechess/releases/tag/v1.1.0
