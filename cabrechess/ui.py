@@ -67,6 +67,7 @@ from .engine import AI_LEVELS, DEFAULT_AI_LEVEL, SimpleEngine, ai_level, ai_time
 from .pgn import (build_pgn, default_pgn_path, write_pgn,
                   parse_pgn, parse_fen, moves_from_game, read_pgn_file)
 from .settings import load_settings, save_setting
+from .shapes import SHAPE_COLORS, ShapeLayer, color_from_mods
 from .sounds import LOW_TIME_SECONDS, SoundManager, sound_for_move
 from .sprites import PIECE_NAMES, load_window_icon, make_piece_shadow, make_piece_sprite
 from .support import KOFI_URL, open_kofi, should_prompt
@@ -200,6 +201,10 @@ class CabreChess:
         self.premove_from = None   # casilla origen del premove
         self.premove_to   = None   # casilla destino del premove
         self.premove_piece = None  # pieza del premove (para dibujarla)
+
+        # Flechas y círculos del usuario (click derecho, A8)
+        self.user_shapes = ShapeLayer()
+        self.shape_start = None    # (casilla, color) al apretar el click derecho
 
         # Análisis — barra de evaluación
         self.eval_score = 0.0        # centipawns, positivo = blancas mejor
@@ -677,8 +682,14 @@ class CabreChess:
         res = self.analysis_result()
         if res is None or res.move is None:
             return
-        start = pygame.Vector2(self.center_of_sq(res.move.from_square))
-        end = pygame.Vector2(self.center_of_sq(res.move.to_square))
+        overlay = pygame.Surface((BOARD_SIZE, BOARD_SIZE), pygame.SRCALPHA)
+        self._draw_arrow(overlay, res.move.from_square, res.move.to_square,
+                         (21, 120, 27, 170))          # verde flecha Lichess
+        self.screen.blit(overlay, (BOARD_X, BOARD_Y))
+
+    def _draw_arrow(self, overlay, from_sq, to_sq, color):
+        start = pygame.Vector2(self.center_of_sq(from_sq))
+        end = pygame.Vector2(self.center_of_sq(to_sq))
         if (end - start).length() < 1:
             return
         direction = (end - start).normalize()
@@ -686,12 +697,68 @@ class CabreChess:
         head = SQUARE_SIZE * 0.38
         tip = end - direction * (SQUARE_SIZE * 0.12)
         base = tip - direction * head
-        overlay = pygame.Surface((BOARD_SIZE, BOARD_SIZE), pygame.SRCALPHA)
         off = pygame.Vector2(BOARD_X, BOARD_Y)
-        color = (21, 120, 27, 170)          # verde flecha Lichess
         pygame.draw.line(overlay, color, start - off, base - off, max(6, SQUARE_SIZE // 7))
         pygame.draw.polygon(overlay, color, [tip - off, base + normal * head * 0.6 - off,
                                              base - normal * head * 0.6 - off])
+
+    # ─── FLECHAS Y CÍRCULOS DEL USUARIO (click derecho) ────────────────────────
+    def shapes_key(self):
+        """Identifica la posición que se ve: las formas viven solo en ella."""
+        b = self.displayed_board()
+        return (b.fen(), len(b.move_stack))
+
+    def current_shapes(self):
+        return self.user_shapes.for_position(self.shapes_key())
+
+    def shapes_enabled(self):
+        return self.mode in ("pvp", "vsai", "analysis") and not self.promotion_pending
+
+    def start_shape(self, pos, mods=0):
+        self.shape_start = None
+        if not self.shapes_enabled() or (self.game_over and self.game_over_panel):
+            return
+        sq = self.pixel_to_sq(*pos)
+        if sq is None:
+            return
+        color = color_from_mods(shift=bool(mods & pygame.KMOD_SHIFT),
+                                ctrl=bool(mods & pygame.KMOD_CTRL),
+                                alt=bool(mods & (pygame.KMOD_ALT | pygame.KMOD_META)))
+        self.shape_start = (sq, color)
+
+    def finish_shape(self, pos):
+        start, self.shape_start = self.shape_start, None
+        if start is None or not self.shapes_enabled():
+            return
+        dest = self.pixel_to_sq(*pos)
+        if dest is None:
+            return
+        orig, color = start
+        self.user_shapes.toggle(self.shapes_key(), orig, dest, color)
+
+    def clear_shapes(self):
+        self.user_shapes.clear()
+
+    def draw_user_shapes(self):
+        shapes = self.current_shapes()
+        preview = None
+        if self.shape_start is not None and self.hover_sq is not None:
+            preview = (self.shape_start[0], self.hover_sq, self.shape_start[1])
+        if not shapes and preview is None:
+            return
+        overlay = pygame.Surface((BOARD_SIZE, BOARD_SIZE), pygame.SRCALPHA)
+        items = [(s.orig, s.dest, s.color) for s in shapes]
+        if preview is not None and preview[:2] not in [i[:2] for i in items]:
+            items.append(preview)
+        for orig, dest, color in items:
+            rgba = SHAPE_COLORS.get(color, SHAPE_COLORS["green"])
+            if orig == dest:
+                cx, cy = self.center_of_sq(orig)
+                width = max(3, SQUARE_SIZE // 16)
+                pygame.draw.circle(overlay, rgba, (cx - BOARD_X, cy - BOARD_Y),
+                                   SQUARE_SIZE // 2 - width // 2 - 1, width)
+            else:
+                self._draw_arrow(overlay, orig, dest, rgba)
         self.screen.blit(overlay, (BOARD_X, BOARD_Y))
 
     def draw_analysis_line(self, y):
@@ -741,6 +808,9 @@ class CabreChess:
         # Mejor jugada del análisis (flecha)
         if self.analysis_active():
             self.draw_best_move_arrow()
+
+        # Flechas y círculos del usuario
+        self.draw_user_shapes()
 
         # Animación de movimiento
         if self.anim_move:
@@ -2561,15 +2631,22 @@ class CabreChess:
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
-                    self.handle_click(self.to_logical(event.pos))
-                elif event.button == 3:   # click derecho cancela premove
+                    pos = self.to_logical(event.pos)
+                    # Click izquierdo sobre el tablero borra flechas y círculos
+                    if self.mode != "menu" and self.pixel_to_sq(*pos) is not None:
+                        self.clear_shapes()
+                    self.handle_click(pos)
+                elif event.button == 3:   # click derecho cancela premove y dibuja
                     self.clear_premove()
                     self.selected_sq = None
                     self.legal_moves_from = []
+                    self.start_shape(self.to_logical(event.pos), pygame.key.get_mods())
 
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1 and self.dragging:
                     self.handle_drop(self.to_logical(event.pos))
+                elif event.button == 3:
+                    self.finish_shape(self.to_logical(event.pos))
 
             elif event.type == pygame.MOUSEMOTION:
                 pos = self.to_logical(event.pos)
