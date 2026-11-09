@@ -6,6 +6,17 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Flechas y círculos con click derecho (A8, parte 1)
+- Como en Lichess: **click derecho** en una casilla dibuja un **círculo** y
+  **arrastrar con el click derecho** dibuja una **flecha** (se ve mientras se
+  arrastra). Sirve en partidas, contra la IA, en análisis y al revisar.
+- Colores: verde por defecto, **Shift** o **Ctrl** rojo, **Alt** azul y
+  **Shift+Alt** amarillo. Repetir la misma forma la borra; con otro color la cambia.
+- Se borran con un **click izquierdo en el tablero**, al mover, deshacer o
+  pasar a otra jugada en la revisión (cada forma queda en su posición).
+- El click derecho sigue cancelando el premove.
+- Nuevo módulo `cabrechess/shapes.py` y tests en `tests/test_flechas_circulos.py`.
+
 ## [1.3.0] - 2026-11-07
 
 ### Apoyar en Ko-fi

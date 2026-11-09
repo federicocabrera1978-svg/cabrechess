@@ -82,6 +82,7 @@ Por Federico Cabrera.
 | Mover | Click en origen y destino, o arrastrar y soltar |
 | Premove | Mover una pieza propia mientras le toca al rival |
 | Cancelar premove | Click derecho o `Esc` |
+| Flechas y círculos (como Lichess) | Click derecho en una casilla = círculo; arrastrar con click derecho = flecha. Verde; `Shift`/`Ctrl` rojo, `Alt` azul, `Shift+Alt` amarillo. Repetir la forma la borra; click izquierdo en el tablero o mover borra todo |
 | Deshacer | `Ctrl+Z` o el botón ← |
 | Abandonar | Botón de la bandera (pide confirmación) |
 | Ofrecer tablas | Botón ½ (una oferta por jugada; `Esc` cierra el diálogo) |
@@ -229,7 +230,7 @@ built reproducibly by GitHub Actions with a SHA-256 checksum.
 **Saved games & analysis:** every finished game is stored automatically in a local SQLite database (`%APPDATA%\\CabreChess\\partidas.db` on Windows, `~/.cabrechess/` elsewhere); browse, open in analysis, export or delete them from *Partidas guardadas*. Analysis shows the best move (arrow + SAN) and evaluation using the built-in engine in-process; Stockfish can optionally be configured via `settings.json` (`stockfish_path`) or `CABRECHESS_STOCKFISH`; once configured it can also be picked as the opponent in the menu (*Rival IA*), with levels 1-6 mapped to its Skill Level.
 
 **Controls:** click or drag to move · right-click/`Esc` cancels a premove · `Ctrl+Z` undo ·
-`F` flip board · `M` mute/unmute sound · `T` board theme (brown, blue, green, grey) · `R` restart · `F11`/`Alt+Enter` fullscreen (window is resizable) · `Esc` closes the game-over panel / back to menu / quit · after the game, `←` `→` `Home` `End` or a click on a move review the moves · mouse wheel scrolls the move list · `C` copies the FEN, `Shift+C` the PGN.
+`F` flip board · `M` mute/unmute sound · `T` board theme (brown, blue, green, grey) · `R` restart · `F11`/`Alt+Enter` fullscreen (window is resizable) · `Esc` closes the game-over panel / back to menu / quit · after the game, `←` `→` `Home` `End` or a click on a move review the moves · mouse wheel scrolls the move list · `C` copies the FEN, `Shift+C` the PGN. Right-click draws circles, right-drag draws arrows (`Shift` red, `Alt` blue, `Shift+Alt` yellow), like Lichess.
 
 **Run it** (Python 3.9+):
 
