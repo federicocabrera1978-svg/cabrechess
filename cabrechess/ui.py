@@ -52,6 +52,7 @@ from .display import (
     window_to_logical,
 )
 from .analysis import Analyzer
+from .animation import plan_animation
 from .review import MARK_COLORS, GameReview
 from .database import GameDB
 from .endings import (
@@ -179,6 +180,7 @@ class CabreChess:
         self.anim_piece = None
         self.anim_from_pos = None
         self.anim_to_pos = None
+        self.anim_plan = None
 
         # Capturadas
         self.captured_white = []
@@ -1041,7 +1043,7 @@ class CabreChess:
             # Ocultar pieza origen del premove (se muestra semi-transparente)
             if sq == self.premove_from and self.premove_to is not None:
                 continue
-            if self.anim_move and sq == self.anim_move.to_square:
+            if self.anim_move and sq in self.anim_hidden_squares():
                 continue
             piece = self.board.piece_at(sq)
             if piece:
@@ -1075,19 +1077,47 @@ class CabreChess:
         self.screen.blit(make_piece_sprite(self.drag_piece.piece_type, self.drag_piece.color,
                                            SQUARE_SIZE), (x, y))
 
+    def anim_hidden_squares(self):
+        """Casillas cuya pieza fija no se dibuja mientras corre la animación."""
+        if self.anim_plan is not None:
+            return self.anim_plan.hidden_squares()
+        return {self.anim_move.to_square} if self.anim_move else set()
+
+    def animation_progress(self):
+        """Avance de la animación entre 0 y 1 (``None`` si no hay ninguna)."""
+        if not self.anim_move:
+            return None
+        return max(0.0, min(1.0, (time.time() - self.anim_start) / self.anim_duration))
+
     def draw_animation(self):
-        t = (time.time() - self.anim_start) / self.anim_duration
-        if t >= 1:
+        t = self.animation_progress()
+        if t is None or t >= 1:
             self.anim_move = None
+            self.anim_plan = None
             return
+        plan = self.anim_plan
+        # La pieza capturada se desvanece en su casilla (también al paso)
+        if plan is not None and plan.captured is not None:
+            x, y = self.sq_to_pixel(plan.captured_square)
+            ghost = make_piece_sprite(plan.captured.piece_type, plan.captured.color,
+                                      SQUARE_SIZE).copy()
+            alpha = int(255 * (1 - t))
+            ghost.fill((255, 255, 255, alpha), special_flags=pygame.BLEND_RGBA_MULT)
+            self.screen.blit(ghost, (x, y))
         # Interpolación suave
-        t = t * t * (3 - 2 * t)  # smoothstep
-        if self.anim_from_pos and self.anim_to_pos and self.anim_piece:
-            x = self.anim_from_pos[0] + (self.anim_to_pos[0] - self.anim_from_pos[0]) * t
-            y = self.anim_from_pos[1] + (self.anim_to_pos[1] - self.anim_from_pos[1]) * t
+        e = t * t * (3 - 2 * t)  # smoothstep
+        if plan is not None:
+            slides = [(s.piece, self.sq_to_pixel(s.from_square), self.sq_to_pixel(s.to_square))
+                      for s in plan.slides]
+        elif self.anim_from_pos and self.anim_to_pos and self.anim_piece:
+            slides = [(self.anim_piece, self.anim_from_pos, self.anim_to_pos)]
+        else:
+            slides = []
+        for piece, (fx, fy), (tx, ty) in slides:
+            x = fx + (tx - fx) * e
+            y = fy + (ty - fy) * e
             self.screen.blit(
-                make_piece_sprite(self.anim_piece.piece_type, self.anim_piece.color,
-                                  SQUARE_SIZE),
+                make_piece_sprite(piece.piece_type, piece.color, SQUARE_SIZE),
                 (int(x), int(y)),
             )
 
@@ -1827,7 +1857,8 @@ class CabreChess:
         self.undo_stack.append(self.snapshot_state())
         # Guardar pieza para animación
         piece = self.board.piece_at(move.from_square)
-        captured = self.board.piece_at(move.to_square)
+        plan = plan_animation(self.board, move)
+        captured = plan.captured   # incluye el peón capturado al paso
         if captured:
             if captured.color == chess.WHITE:
                 self.captured_white.append(captured)
@@ -1839,6 +1870,7 @@ class CabreChess:
         self.anim_from_pos = self.sq_to_pixel(move.from_square)
         self.anim_to_pos = self.sq_to_pixel(move.to_square)
         self.anim_move = move
+        self.anim_plan = plan
         self.anim_start = time.time()
 
         san = self.board.san(move)
