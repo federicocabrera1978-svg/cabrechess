@@ -6,6 +6,17 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Animar el enroque y la captura (A8, parte 2)
+- En el **enroque** ahora se deslizan **las dos piezas**: el rey y la torre
+  llegan juntas a su casilla (antes la torre aparecía de golpe).
+- La **pieza capturada se desvanece** en su casilla mientras llega la que
+  captura, también al **capturar al paso** (el peón se desvanece en su casilla
+  real, no en la de destino).
+- Arreglo: la captura al paso ahora suma el peón al material capturado y
+  muestra las partículas de captura.
+- Nuevo módulo `cabrechess/animation.py` y tests en
+  `tests/test_animar_enroque_captura.py`.
+
 ### Flechas y círculos con click derecho (A8, parte 1)
 - Como en Lichess: **click derecho** en una casilla dibuja un **círculo** y
   **arrastrar con el click derecho** dibuja una **flecha** (se ve mientras se
