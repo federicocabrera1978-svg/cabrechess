@@ -6,6 +6,14 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Builds para Linux y macOS (D4)
+- El workflow de release ahora arma, además del `.exe` y el `.zip` de Windows,
+  un `.tar.gz` para Linux (`CabreChess-linux64.tar.gz`) y un `.dmg` con
+  `CabreChess.app` para macOS Apple Silicon (`CabreChess-macos-arm64.dmg`).
+  Cada archivo trae su checksum SHA-256.
+- El empaquetado queda en `tools/package.py`. El CI también lo corre en
+  Ubuntu, Windows y macOS, y los tests cubren las tres plataformas.
+
 ## [1.4.0] - 2026-11-13
 
 ### Tablero vivo
