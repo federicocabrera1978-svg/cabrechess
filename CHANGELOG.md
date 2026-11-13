@@ -6,6 +6,13 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-13
+
+### Tablero vivo
+
+El tablero cobra vida: flechas y círculos, enroque y capturas animados,
+y un menú renovado con Ajustes.
+
 ### Menú renovado con Ajustes (A7)
 - Nuevo botón **Ajustes** abajo a la izquierda del menú, con una pantalla
   propia para elegir **tablero** (con muestra de colores), **sonido**,
@@ -346,7 +353,8 @@ Primera versión publicada.
   (regla FIDE 6.9).
 - Las partículas de jaque no aparecían si el rey estaba en a1.
 
-[Unreleased]: https://github.com/federicocabrera1978-svg/cabrechess/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/federicocabrera1978-svg/cabrechess/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/federicocabrera1978-svg/cabrechess/releases/tag/v1.4.0
 [1.3.0]: https://github.com/federicocabrera1978-svg/cabrechess/releases/tag/v1.3.0
 [1.2.0]: https://github.com/federicocabrera1978-svg/cabrechess/releases/tag/v1.2.0
 [1.1.0]: https://github.com/federicocabrera1978-svg/cabrechess/releases/tag/v1.1.0
