@@ -17,6 +17,8 @@ se usa si además hay stockfish_path (se elige en el menú).
 "support_prompt_every": cada cuántas partidas terminadas aparece el aviso
 discreto para apoyar en Ko-fi (por defecto 5; 0 = nunca). "support_games" es el
 contador que lleva el juego.
+"player_color": white / black / random = color con el que se juega contra la IA
+(se elige en el menú o en Ajustes y se recuerda).
 """
 import json
 import os
@@ -24,9 +26,11 @@ import sys
 from pathlib import Path
 
 AI_ENGINES = ("cabrechess", "stockfish")
+PLAYER_COLORS = ("white", "black", "random")
 DEFAULTS = {"stockfish_path": "", "analysis_depth": 3, "sound": True,
             "board_theme": "marron", "ai_engine": "cabrechess",
-            "support_prompt_every": 5, "support_games": 0}
+            "support_prompt_every": 5, "support_games": 0,
+            "player_color": "white"}
 
 
 def data_dir():
@@ -65,6 +69,8 @@ def load_settings(path=None):
         cfg["board_theme"] = DEFAULTS["board_theme"]
     if cfg["ai_engine"] not in AI_ENGINES:
         cfg["ai_engine"] = DEFAULTS["ai_engine"]
+    if cfg["player_color"] not in PLAYER_COLORS:
+        cfg["player_color"] = DEFAULTS["player_color"]
     for key in ("support_prompt_every", "support_games"):
         try:
             cfg[key] = max(0, int(cfg[key]))

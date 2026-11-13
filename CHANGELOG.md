@@ -6,6 +6,20 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Menú renovado con Ajustes (A7)
+- Nuevo botón **Ajustes** abajo a la izquierda del menú, con una pantalla
+  propia para elegir **tablero** (con muestra de colores), **sonido**,
+  **color contra la IA**, **cada cuánto aparece el aviso de Ko-fi** y, si hay
+  Stockfish configurado, el **rival IA**. Todo se guarda solo en
+  `settings.json` y hay una **vista previa** del tablero con el tema y el color.
+- El **color contra la IA** ahora se recuerda entre sesiones (`player_color`),
+  también si se elige en el menú principal.
+- **Transiciones suaves**: al cambiar de pantalla (menú, ajustes, partidas
+  guardadas, partida) la nueva aparece con un fundido corto.
+- Arreglo: la **versión** del juego no se veía en el menú (el código que la
+  dibujaba nunca se ejecutaba).
+- Nuevo módulo `cabrechess/transitions.py` y tests en `tests/test_menu_ajustes.py`.
+
 ### Animar el enroque y la captura (A8, parte 2)
 - En el **enroque** ahora se deslizan **las dos piezas**: el rey y la torre
   llegan juntas a su casilla (antes la torre aparecía de golpe).
