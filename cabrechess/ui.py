@@ -72,6 +72,7 @@ from .shapes import SHAPE_COLORS, ShapeLayer, color_from_mods
 from .sounds import LOW_TIME_SECONDS, SoundManager, sound_for_move
 from .sprites import PIECE_NAMES, load_window_icon, make_piece_shadow, make_piece_sprite
 from .support import KOFI_URL, open_kofi, should_prompt
+from .transitions import fade_alpha
 
 
 def menu_version_text():
@@ -129,6 +130,8 @@ class CabreChess:
         self.mode = "menu"   # menu / pvp / vsai / analysis
         self.ai_color = chess.BLACK
         self.player_color_choice = "white"   # white / black / random (vs IA)
+        self._shown_mode = None              # para la transición entre pantallas
+        self.transition_start = None
         self.ai_thinking = False
         self.ai_think_start = 0
         self.ai_delay = 0.6
@@ -136,6 +139,7 @@ class CabreChess:
         _cfg = load_settings()
         self.sound = SoundManager(enabled=_cfg.get("sound", True))
         self.board_theme = _cfg.get("board_theme", DEFAULT_THEME)
+        self.player_color_choice = _cfg.get("player_color", "white")
         # Apoyar en Ko-fi: aviso discreto tras una partida, cada N partidas.
         self.support_prompt_every = _cfg.get("support_prompt_every", 5)
         self.support_games = _cfg.get("support_games", 0)
@@ -333,6 +337,13 @@ class CabreChess:
             font = self.font_xl if size >= 30 else self.font_med
             surf = font.render("½", True, color)
             scr.blit(surf, (cx - surf.get_width() // 2, cy - surf.get_height() // 2))
+        elif kind == "gear":     # engranaje (ajustes)
+            for i in range(8):
+                a = math.radians(i * 45)
+                pygame.draw.line(scr, color, (cx, cy),
+                                 (cx + (h - 1) * math.cos(a), cy + (h - 1) * math.sin(a)), 4)
+            pygame.draw.circle(scr, color, (cx, cy), h - 4)
+            pygame.draw.circle(scr, PANEL_COLOR, (cx, cy), max(2, h // 3))
         elif kind == "coffee":   # taza de café (Ko-fi)
             cup = pygame.Rect(cx - h + 1, cy - h // 2, size - 7, h + 3)
             pygame.draw.rect(scr, color, cup, border_bottom_left_radius=5,
@@ -417,10 +428,39 @@ class CabreChess:
             self.draw_menu()
         elif self.mode == "saved":
             self.draw_saved_games()
+        elif self.mode == "settings":
+            self.draw_settings()
         else:
             self.draw_game()
 
+        self.draw_transition()
         self.present()
+
+    # ─── TRANSICIONES ENTRE PANTALLAS ───────────────────────────────────────────
+    def screen_kind(self):
+        """Pantalla actual a efectos de la transición (las partidas cuentan
+        como una sola: cambiar de pvp a vsai no es cambiar de pantalla)."""
+        return self.mode if self.mode in ("menu", "saved", "settings") else "game"
+
+    def draw_transition(self, now=None):
+        """Velo oscuro que se desvanece al cambiar de pantalla."""
+        now = time.time() if now is None else now
+        kind = self.screen_kind()
+        if kind != self._shown_mode:
+            if self._shown_mode is not None:
+                self.transition_start = now
+            self._shown_mode = kind
+        if self.transition_start is None:
+            return 0
+        alpha = fade_alpha(now - self.transition_start)
+        if alpha <= 0:
+            self.transition_start = None
+            return 0
+        veil = pygame.Surface((WINDOW_W, WINDOW_H))
+        veil.fill(BG_COLOR)
+        veil.set_alpha(alpha)
+        self.screen.blit(veil, (0, 0))
+        return alpha
 
     # ─── VENTANA / ESCALADO ─────────────────────────────────────────────────────
     def viewport(self):
@@ -557,6 +597,20 @@ class CabreChess:
             f"{who}  ·  +{self.time_increment}s por movimiento", True, TEXT_DIM)
         self.screen.blit(inc_surf, (WINDOW_W//2 - inc_surf.get_width()//2, info_y))
 
+        # Ajustes (esquina inferior izquierda, simétrico a Ko-fi)
+        label, rect = self.menu_settings_button()
+        hovered = rect.collidepoint(mx, my)
+        pygame.draw.rect(self.screen, (45, 44, 41) if hovered else (35, 34, 31), rect, border_radius=6)
+        pygame.draw.rect(self.screen, ACCENT if hovered else BORDER_COLOR, rect, 1, border_radius=6)
+        tc = TEXT_BRIGHT if hovered else TEXT_COLOR
+        self.draw_icon("gear", (rect.x + 20, rect.centery), ACCENT, size=18)
+        lbl = self.font_small.render(label, True, tc)
+        self.screen.blit(lbl, (rect.x + 36, rect.centery - lbl.get_height() // 2))
+
+        # Versión
+        v = self.font_tiny.render(menu_version_text(), True, TEXT_DIM)
+        self.screen.blit(v, (WINDOW_W//2 - v.get_width()//2, WINDOW_H - 30))
+
     # Layout del menú: una sola fuente de verdad para dibujo y clics
     def menu_main_buttons(self):
         items = [
@@ -580,6 +634,10 @@ class CabreChess:
             ("Cargar FEN", "load_fen", (120, 160, 200),
              pygame.Rect(x0 + w + gap, y, w, h)),
         ]
+
+    def menu_settings_button(self):
+        """Botón "Ajustes" del menú: (etiqueta, rect)."""
+        return "Ajustes", pygame.Rect(20, WINDOW_H - 50, 170, 34)
 
     def menu_support_button(self):
         """Botón "Apoyar en Ko-fi" del menú: (etiqueta, rect)."""
@@ -627,7 +685,7 @@ class CabreChess:
                  62, self.time_selected)),
         ]
         setters = [lambda v: setattr(self, "ai_level", v),
-                   lambda v: setattr(self, "player_color_choice", v),
+                   self.set_player_color,
                    lambda v: setattr(self, "time_selected", v)]
         if self.stockfish_path:
             rows.append(("Rival IA:", MENU_ROW_Y[3], ACCENT,
@@ -635,10 +693,6 @@ class CabreChess:
                              100, self.ai_engine)))
             setters.append(self.set_ai_engine)
         return [(*r, setter) for r, setter in zip(rows, setters)]
-
-        # Versión
-        v = self.font_tiny.render(menu_version_text(), True, TEXT_DIM)
-        self.screen.blit(v, (WINDOW_W//2 - v.get_width()//2, WINDOW_H - 30))
 
     def draw_game(self):
         if self.review_index is None:
@@ -2326,6 +2380,147 @@ class CabreChess:
         self.mode = "menu"
         self.reset_game()
 
+    # ─── AJUSTES ────────────────────────────────────────────────────────────────
+    SETTINGS_X = 150            # columna de etiquetas
+    SETTINGS_BTN_X = 380        # primera columna de opciones
+    SETTINGS_TOP = 150
+    SETTINGS_ROW_H = 78
+    SUPPORT_EVERY_OPTIONS = ((5, "Cada 5"), (10, "Cada 10"), (0, "Nunca"))
+
+    def open_settings(self):
+        self.mode = "settings"
+
+    def close_settings(self):
+        self.mode = "menu"
+
+    def set_player_color(self, value, save=True):
+        if value not in ("white", "black", "random"):
+            return False
+        self.player_color_choice = value
+        if save:
+            save_setting("player_color", value)
+        return True
+
+    def set_sound(self, on):
+        if self.sound.enabled != bool(on):
+            self.toggle_sound()
+        return self.sound.enabled
+
+    def set_support_every(self, n):
+        self.support_prompt_every = max(0, int(n))
+        save_setting("support_prompt_every", self.support_prompt_every)
+
+    def settings_rows(self):
+        """Filas de la pantalla de ajustes: (etiqueta, y, color, opciones, setter),
+        con opciones (texto, rect, seleccionada, valor). Una sola fuente de
+        verdad para dibujo y clics."""
+        def row(y, specs, w, current, h=34):
+            return [(text, pygame.Rect(self.SETTINGS_BTN_X + i*(w + 8), y, w, h), value == current, value)
+                    for i, (text, value) in enumerate(specs)]
+        ys = [self.SETTINGS_TOP + i*self.SETTINGS_ROW_H for i in range(5)]
+        rows = [
+            ("Tablero", ys[0], ACCENT,
+             row(ys[0], [(name, key) for key, (name, _l, _d) in BOARD_THEMES.items()],
+                 96, self.board_theme, h=56),
+             self.set_board_theme),
+            ("Sonido", ys[1], ACCENT2,
+             row(ys[1], [("Activado", True), ("Silenciado", False)], 130, self.sound.enabled),
+             self.set_sound),
+            ("Color contra la IA", ys[2], ACCENT,
+             row(ys[2], [("Blancas", "white"), ("Negras", "black"), ("Azar", "random")],
+                 100, self.player_color_choice),
+             self.set_player_color),
+            ("Aviso de Ko-fi", ys[3], KOFI_COLOR,
+             row(ys[3], [(t, v) for v, t in self.SUPPORT_EVERY_OPTIONS],
+                 100, self.support_prompt_every),
+             self.set_support_every),
+        ]
+        if self.stockfish_path:
+            rows.append(("Rival IA", ys[4], ACCENT,
+                         row(ys[4], [("CabreChess", "cabrechess"), ("Stockfish", "stockfish")],
+                             130, self.ai_engine),
+                         self.set_ai_engine))
+        return rows
+
+    def settings_back_button(self):
+        return "Volver al menú", pygame.Rect(WINDOW_W//2 - 110, WINDOW_H - 80, 220, 44)
+
+    def draw_settings(self):
+        mx, my = self.mouse_pos()
+        title = self.font_title.render("Ajustes", True, TEXT_BRIGHT)
+        self.screen.blit(title, (WINDOW_W//2 - title.get_width()//2, 40))
+        sub = self.font_tiny.render("Se guardan solos en settings.json  ·  Esc para volver",
+                                    True, TEXT_DIM)
+        self.screen.blit(sub, (WINDOW_W//2 - sub.get_width()//2, 108))
+
+        for label, y, accent, options, _setter in self.settings_rows():
+            h = options[0][1].h if options else 34
+            lbl = self.font_med.render(label, True, TEXT_COLOR)
+            self.screen.blit(lbl, (self.SETTINGS_X, y + h//2 - lbl.get_height()//2))
+            for text, rect, selected, value in options:
+                hovered = rect.collidepoint(mx, my)
+                if label == "Tablero":
+                    # Muestra del tema: 2x2 casillas + nombre
+                    _n, light, dark = BOARD_THEMES[value]
+                    pygame.draw.rect(self.screen, (40, 40, 37), rect, border_radius=6)
+                    sq = 16
+                    sx, sy = rect.x + 8, rect.centery - sq
+                    for i in range(2):
+                        for j in range(2):
+                            pygame.draw.rect(self.screen, light if (i + j) % 2 == 0 else dark,
+                                             (sx + i*sq, sy + j*sq, sq, sq))
+                    t = self.font_small.render(text, True, TEXT_BRIGHT if selected else TEXT_COLOR)
+                    self.screen.blit(t, (sx + 2*sq + 6, rect.centery - t.get_height()//2))
+                    border = accent if selected else (TEXT_DIM if hovered else BORDER_COLOR)
+                    pygame.draw.rect(self.screen, border, rect, 3 if selected else 1, border_radius=6)
+                    continue
+                bg = accent if selected else ((52, 51, 47) if hovered else (40, 40, 37))
+                pygame.draw.rect(self.screen, bg, rect, border_radius=6)
+                t = self.font_small.render(text, True, BG_COLOR if selected else TEXT_COLOR)
+                self.screen.blit(t, (rect.centerx - t.get_width()//2, rect.centery - t.get_height()//2))
+
+        self.draw_settings_preview()
+
+        label, rect = self.settings_back_button()
+        hovered = rect.collidepoint(mx, my)
+        pygame.draw.rect(self.screen, (45, 44, 41) if hovered else (35, 34, 31), rect, border_radius=8)
+        pygame.draw.rect(self.screen, ACCENT if hovered else BORDER_COLOR, rect, 2, border_radius=8)
+        lbl = self.font_med.render(label, True, TEXT_BRIGHT if hovered else TEXT_COLOR)
+        self.screen.blit(lbl, (rect.centerx - lbl.get_width()//2, rect.centery - lbl.get_height()//2))
+
+    def settings_preview_rect(self):
+        return pygame.Rect(WINDOW_W - 290, self.SETTINGS_TOP + 70, 240, 240)
+
+    def draw_settings_preview(self):
+        """Mini tablero con la posición inicial, en el tema elegido y del lado
+        del color contra la IA (Azar muestra blancas)."""
+        rect = self.settings_preview_rect()
+        light, dark = BOARD_THEMES[self.board_theme][1:]
+        sq = rect.w // 8
+        black_below = self.player_color_choice == "black"
+        start = chess.Board()
+        for rank in range(8):
+            for file in range(8):
+                x = rect.x + (7 - file if black_below else file) * sq
+                y = rect.y + (rank if black_below else 7 - rank) * sq
+                pygame.draw.rect(self.screen, light if (rank + file) % 2 else dark, (x, y, sq, sq))
+                piece = start.piece_at(chess.square(file, rank))
+                if piece:
+                    self.screen.blit(make_piece_sprite(piece.piece_type, piece.color, sq), (x, y))
+        pygame.draw.rect(self.screen, BORDER_COLOR, rect.inflate(4, 4), 2)
+        cap = self.font_tiny.render("Vista previa", True, TEXT_DIM)
+        self.screen.blit(cap, (rect.centerx - cap.get_width()//2, rect.bottom + 8))
+
+    def handle_settings_click(self, pos):
+        if self.settings_back_button()[1].collidepoint(pos):
+            self.close_settings()
+            return
+        for _label, _y, _acc, options, setter in self.settings_rows():
+            for _text, rect, _sel, value in options:
+                if rect.collidepoint(pos):
+                    setter(value)
+                    return
+
     # ─── PARTIDAS GUARDADAS ─────────────────────────────────────────────────────
     SAVED_ROWS = 14
     SAVED_ROW_H = 34
@@ -2608,11 +2803,21 @@ class CabreChess:
                 else:
                     self.handle_saved_key(event.key)
 
+            elif event.type == pygame.KEYDOWN and self.mode == "settings":
+                if event.key == pygame.K_F11:
+                    self.toggle_fullscreen()
+                elif event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                    self.close_settings()
+                elif event.key == pygame.K_m:
+                    self.toggle_sound()
+                elif event.key == pygame.K_t:
+                    self.cycle_board_theme()
+
             elif event.type == pygame.MOUSEWHEEL and self.mode == "saved":
                 self.saved_scroll = max(0, min(max(0, len(self.saved_games) - self.SAVED_ROWS),
                                                self.saved_scroll - event.y))
 
-            elif event.type == pygame.MOUSEWHEEL and self.mode != "menu":
+            elif event.type == pygame.MOUSEWHEEL and self.mode not in ("menu", "settings"):
                 if self.mouse_over_history(self.mouse_pos()):
                     self.scroll_history(event.y)
 
@@ -2665,7 +2870,7 @@ class CabreChess:
                 if event.button == 1:
                     pos = self.to_logical(event.pos)
                     # Click izquierdo sobre el tablero borra flechas y círculos
-                    if self.mode != "menu" and self.pixel_to_sq(*pos) is not None:
+                    if self.mode not in ("menu", "settings") and self.pixel_to_sq(*pos) is not None:
                         self.clear_shapes()
                     self.handle_click(pos)
                 elif event.button == 3:   # click derecho cancela premove y dibuja
@@ -2697,6 +2902,9 @@ class CabreChess:
             return
         if self.mode == "saved":
             self.handle_saved_click(pos)
+            return
+        if self.mode == "settings":
+            self.handle_settings_click(pos)
             return
 
         # Promo
@@ -2915,6 +3123,9 @@ class CabreChess:
 
         if self.menu_support_button()[1].collidepoint(mx, my):
             self.support_kofi()
+            return
+        if self.menu_settings_button()[1].collidepoint(mx, my):
+            self.open_settings()
             return
 
         for _lbl, _y, _acc, options, setter in self.menu_option_rows_with_setters():
