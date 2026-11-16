@@ -6,6 +6,19 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Controles de tiempo estilo Lichess (B10, parte 1)
+- La fila **Tiempo** del menú ahora ofrece los controles clásicos de Lichess
+  con su incremento: **1+0** y **2+1** (bala), **3+2** y **5+3** (blitz),
+  **10+5** y **15+10** (rápidas). Antes eran 1/3/5/10 minutos, siempre con +3 s.
+- Debajo de las opciones se ve la **categoría** (Bala, Blitz, Rápida o Clásica,
+  calculada como Lichess: base + 40 × incremento) y el incremento por jugada.
+- El control elegido **se recuerda** entre sesiones (`time_control` en
+  `settings.json`). A mano se puede poner uno **personalizado**, por ejemplo
+  `"7+4"` (1 a 180 minutos, 0 a 60 s), y aparece como opción extra en el menú.
+- Cambio: el control por defecto pasa a ser **3+2** (antes 3 min +3 s).
+- El encabezado PGN `TimeControl` y la IA usan el incremento real del control.
+- Tests nuevos en `tests/test_controles_tiempo.py`.
+
 ## [1.4.0] - 2026-11-13
 
 ### Tablero vivo

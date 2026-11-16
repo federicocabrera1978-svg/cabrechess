@@ -67,7 +67,7 @@ def test_final_cartel_reloj_y_autoguardado(game, fen, ucis, term, result, title)
     assert db.count() == n_antes + 1
     row = db.get_game(game.saved_game_id)
     assert row["result"] == result and row["termination"] == term
-    assert row["mode"] == "pvp" and row["time_control"] == "180+3"
+    assert row["mode"] == "pvp" and row["time_control"] == "180+2"
     parsed = chess.pgn.read_game(io.StringIO(row["pgn"]))
     assert parsed.headers["Result"] == result
 
@@ -105,7 +105,7 @@ def test_jugada_final_no_suma_incremento(game):
     game.board = chess.Board("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1")
     tw = game.time_white
     game.execute_move(chess.Move.from_uci("a1a8"))
-    assert game.time_white == tw              # sin +3 s en la jugada de mate
+    assert game.time_white == tw              # sin incremento en la jugada de mate
 
 
 def test_analisis_no_autoguarda(game):
