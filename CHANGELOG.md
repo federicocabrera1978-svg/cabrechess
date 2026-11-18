@@ -6,6 +6,25 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Puzzle del día (B10, parte 2)
+- Nuevo botón **Puzzle del día** arriba a la derecha del menú: una táctica por
+  día, siempre la misma para la misma fecha, con su **rating** y sus **temas**
+  (mate en 1, ataque doble, clavada…).
+- Como en Lichess, el rival hace la primera jugada solo; vos tenés que
+  encontrar el resto y el rival responde automáticamente. Mensajes
+  **"¡Correcto!"** / **"No es la jugada"**; si das otro mate distinto al de la
+  solución, también vale.
+- Botones **Pista** (marca la pieza a mover), **Ver solución** (flecha y la
+  juega), **Otro puzzle** (uno al azar que todavía no resolviste), **Puzzle del
+  día** y **Menú**. Atajos: `H`, `S`, `N`, `F` y `Esc`.
+- Se guardan en `settings.json` los puzzles resueltos y la **racha** de días
+  seguidos resolviendo el del día (y la mejor racha).
+- Trae **96 puzzles reales** de la [base pública de puzzles de
+  Lichess](https://database.lichess.org/#puzzles) (dominio público, **CC0**),
+  entre 900 y 2000 de rating, repartidos por tema y dificultad
+  (`cabrechess/assets/puzzles/lichess_puzzles.csv`, generado con
+  `tools/sample_puzzles.py`).
+
 ## [1.4.0] - 2026-11-13
 
 ### Tablero vivo

@@ -65,6 +65,7 @@ from .endings import (
     resign_end,
 )
 from .engine import AI_LEVELS, DEFAULT_AI_LEVEL, SimpleEngine, ai_level, ai_time_budget
+from .puzzle_ui import PuzzleScreenMixin
 from .pgn import (build_pgn, default_pgn_path, write_pgn,
                   parse_pgn, parse_fen, moves_from_game, read_pgn_file)
 from .settings import load_settings, save_setting
@@ -80,7 +81,7 @@ def menu_version_text():
     return f"v{__version__} — Motor: Minimax Alpha-Beta"
 
 
-class CabreChess:
+class CabreChess(PuzzleScreenMixin):
     def __init__(self):
         enable_windows_dpi_awareness()   # antes de crear la ventana
         pygame.init()
@@ -430,6 +431,8 @@ class CabreChess:
             self.draw_saved_games()
         elif self.mode == "settings":
             self.draw_settings()
+        elif self.mode == "puzzle":
+            self.draw_puzzle()
         else:
             self.draw_game()
 
@@ -440,7 +443,7 @@ class CabreChess:
     def screen_kind(self):
         """Pantalla actual a efectos de la transición (las partidas cuentan
         como una sola: cambiar de pvp a vsai no es cambiar de pantalla)."""
-        return self.mode if self.mode in ("menu", "saved", "settings") else "game"
+        return self.mode if self.mode in ("menu", "saved", "settings", "puzzle") else "game"
 
     def draw_transition(self, now=None):
         """Velo oscuro que se desvanece al cambiar de pantalla."""
@@ -606,6 +609,8 @@ class CabreChess:
         self.draw_icon("gear", (rect.x + 20, rect.centery), ACCENT, size=18)
         lbl = self.font_small.render(label, True, tc)
         self.screen.blit(lbl, (rect.x + 36, rect.centery - lbl.get_height() // 2))
+
+        self.draw_menu_puzzle_button()
 
         # Versión
         v = self.font_tiny.render(menu_version_text(), True, TEXT_DIM)
@@ -2803,6 +2808,12 @@ class CabreChess:
                 else:
                     self.handle_saved_key(event.key)
 
+            elif event.type == pygame.KEYDOWN and self.mode == "puzzle":
+                if event.key == pygame.K_F11:
+                    self.toggle_fullscreen()
+                else:
+                    self.handle_puzzle_key(event.key)
+
             elif event.type == pygame.KEYDOWN and self.mode == "settings":
                 if event.key == pygame.K_F11:
                     self.toggle_fullscreen()
@@ -2905,6 +2916,9 @@ class CabreChess:
             return
         if self.mode == "settings":
             self.handle_settings_click(pos)
+            return
+        if self.mode == "puzzle":
+            self.handle_puzzle_click(pos)
             return
 
         # Promo
@@ -3127,6 +3141,9 @@ class CabreChess:
         if self.menu_settings_button()[1].collidepoint(mx, my):
             self.open_settings()
             return
+        if self.menu_puzzle_button()[1].collidepoint(mx, my):
+            self.open_puzzle(daily=True)
+            return
 
         for _lbl, _y, _acc, options, setter in self.menu_option_rows_with_setters():
             for _text, rect, _sel, value in options:
@@ -3164,6 +3181,7 @@ class CabreChess:
         self.sync_game_over_panel()
         self.maybe_start_review()
         self.request_analysis()
+        self.puzzle_tick()
 
         # Temporizador — corre siempre excepto en menú, fin de juego o promoción
         if self.game_over and self.final_times is not None:

@@ -39,6 +39,7 @@ cabrechess = [
     "assets/pieces/cburnett/*.png",
     "assets/pieces/cburnett/*.svg",
     "assets/pieces/cburnett/LICENSE",
+    "assets/puzzles/*.csv",
 ]
 
 [tool.pytest.ini_options]
