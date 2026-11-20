@@ -6,6 +6,14 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Builds para Linux y macOS (D4)
+- El workflow de release ahora arma, además del `.exe` y el `.zip` de Windows,
+  un `.tar.gz` para Linux (`CabreChess-linux64.tar.gz`) y un `.dmg` con
+  `CabreChess.app` para macOS Apple Silicon (`CabreChess-macos-arm64.dmg`).
+  Cada archivo trae su checksum SHA-256.
+- El empaquetado queda en `tools/package.py`. El CI también lo corre en
+  Ubuntu, Windows y macOS, y los tests cubren las tres plataformas.
+
 ### Controles de tiempo estilo Lichess (B10, parte 1)
 - La fila **Tiempo** del menú ahora ofrece los controles clásicos de Lichess
   con su incremento: **1+0** y **2+1** (bala), **3+2** y **5+3** (blitz),

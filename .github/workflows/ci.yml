@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     env:
       SDL_VIDEODRIVER: dummy
@@ -54,38 +54,30 @@ jobs:
           python -c "import cabrechess, cabrechess.sprites as s; assert 'site-packages' in cabrechess.__file__; assert (s.ASSETS_DIR / 'pieces/cburnett/wK.png').is_file(); assert (s.ASSETS_DIR / 'logo/cabrechess_64.png').is_file(); print('ok', cabrechess.__version__)"
           which cabrechess
 
-  exe:
-    # Arma los dos formatos de Windows y los sube como artifacts:
-    # - CabreChess-win64: carpeta onedir (recomendado: no se autoextrae a %TEMP%)
-    # - CabreChess-exe:   onefile (un solo .exe)
-    runs-on: windows-latest
+  dist:
+    # Arma el paquete de cada sistema y lo sube como artifact:
+    # Windows: CabreChess-win64.zip (onedir) + CabreChess.exe (onefile)
+    # Linux:   CabreChess-linux64.tar.gz
+    # macOS:   CabreChess-macos-arm64.dmg (Apple Silicon; macos-latest es arm64)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller==6.21.0
       - name: Build
-        run: |
-          pip install -r requirements.txt pyinstaller==6.21.0
-          pyinstaller CabreChess.spec
-          pyinstaller --distpath dist-onedir CabreChess-onedir.spec
-      - name: Check
-        shell: pwsh
-        run: |
-          if (!(Test-Path dist/CabreChess.exe)) { exit 1 }
-          if (!(Test-Path dist-onedir/CabreChess/CabreChess.exe)) { exit 1 }
-          if (!(Test-Path dist-onedir/CabreChess/_internal/cabrechess/assets/pieces/cburnett/wK.png)) { exit 1 }
-      - name: Upload onedir
+        run: python tools/package.py
+      - name: Upload
         uses: actions/upload-artifact@v7
         with:
-          name: CabreChess-win64
-          path: dist-onedir/CabreChess/
-          retention-days: 14
-          if-no-files-found: error
-      - name: Upload exe
-        uses: actions/upload-artifact@v7
-        with:
-          name: CabreChess-exe
-          path: dist/CabreChess.exe
+          name: CabreChess-${{ matrix.os }}
+          path: dist/*
           retention-days: 14
           if-no-files-found: error
