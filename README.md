@@ -47,6 +47,8 @@ Por Federico Cabrera.
   transposiciones) y en los headers `ECO`/`Opening` del PGN.
 - **Exportar a PGN** (se abre en Lichess, ChessBase, etc.) y **cargar PGN o FEN**
   desde el menú (botones *Cargar PGN* / *Cargar FEN*), para revisar en análisis.
+- **Puzzle del día**: una táctica diaria de la base pública de Lichess (CC0), con
+  rating y temas, pista, solución, "Otro puzzle" y racha de días seguidos.
 - Piezas **cburnett** (las de Lichess) y ejecutables para Windows, Linux y macOS con checksum SHA-256.
 
 ## Partidas guardadas y análisis
@@ -97,6 +99,7 @@ Por Federico Cabrera.
 | Cerrar / reabrir el panel de fin de partida | `Esc` o "Cerrar" / "Resultado" |
 | Revisar la partida terminada | `←` `→` `Inicio` `Fin`, la barra `|< < > >|`, click en una jugada de la lista, o deshacer (`Ctrl+Z` / ←): con la partida terminada no deshace jugadas, solo retrocede en la revisión |
 | Recorrer la lista de jugadas | Rueda del mouse sobre la lista |
+| Puzzle del día | Botón arriba a la derecha del menú. `H` pista, `S` ver solución, `N` otro puzzle, `Esc` volver |
 | Copiar FEN / PGN al portapapeles | `C` copia el FEN de la posición que se ve; `Shift+C` copia el PGN de la partida |
 
 ## Requisitos y cómo ejecutarlo
@@ -223,6 +226,8 @@ cabrechess/
 ├── clock.py       # formato del reloj y resultado por bandera
 ├── pgn.py         # exportación e importación PGN/FEN
 ├── openings.py    # nombres de aperturas (ECO), búsqueda por posición
+├── puzzles.py     # puzzle del día: carga, validación de jugadas y racha
+├── puzzle_ui.py   # pantalla del puzzle del día
 ├── sprites.py     # piezas cburnett / dibujadas, ícono, ubicación de assets
 ├── ui.py          # interfaz pygame (clase CabreChess, loop, eventos)
 └── assets/        # piezas cburnett y logo (se instalan con el paquete)
@@ -232,6 +237,8 @@ cabrechess/
 
 - Piezas: set **cburnett** de Colin M.L. Burnett (GPLv2+), el mismo que usa Lichess.
   Ver `cabrechess/assets/pieces/cburnett/LICENSE`. El logo usa el caballo de ese set.
+- Puzzles: [base pública de puzzles de Lichess](https://database.lichess.org/#puzzles),
+  dominio público (**CC0**). Ver `cabrechess/assets/puzzles/lichess_puzzles.csv`.
 - Código: **GPL-3.0-or-later**. Ver [LICENSE](LICENSE).
 
 ## Apoyar el proyecto
