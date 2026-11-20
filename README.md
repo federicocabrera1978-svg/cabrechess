@@ -35,7 +35,7 @@ Por Federico Cabrera.
 - **Elegís el color** contra la IA: blancas, negras o al azar (con negras el tablero se gira solo).
 - **2 jugadores** en la misma compu (PvP).
 - **Modo análisis** con barra y gráfico de evaluación.
-- **Reloj** de 1, 3, 5 o 10 minutos con +3 s de incremento. Si se te cae la bandera
+- **Reloj** con controles estilo Lichess (1+0, 2+1, 3+2, 5+3, 10+5 y 15+10) que se recuerdan. Si se te cae la bandera
   y al rival no le alcanza el material para ganar, son tablas (como en el reglamento).
 - **Abandonar y ofrecer tablas** (botones de la bandera y ½ del panel). Contra la IA, acepta
   tablas solo si va perdiendo o si la posición está pareja desde la jugada 30;
@@ -248,7 +248,7 @@ inspired by Lichess.
 
 **Features:** play against a built-in AI (iterative-deepening alpha-beta with quiescence search and a per-move time limit, 3 levels, runs in a
 background thread) as white, black or random; local 2-player mode; analysis mode with
-evaluation bar and graph; 1/3/5/10-minute clocks with +3 s increment and proper
+evaluation bar and graph; Lichess-style time controls (1+0 to 15+10) and proper
 flag-vs-insufficient-material handling; full undo (clocks, captures, eval); premoves,
 drag and drop, promotion picker; PGN export; Lichess cburnett pieces; Windows, Linux and macOS builds
 produced reproducibly by GitHub Actions with a SHA-256 checksum.

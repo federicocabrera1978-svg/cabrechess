@@ -19,6 +19,9 @@ discreto para apoyar en Ko-fi (por defecto 5; 0 = nunca). "support_games" es el
 contador que lleva el juego.
 "player_color": white / black / random = color con el que se juega contra la IA
 (se elige en el menú o en Ajustes y se recuerda).
+"time_control": control de tiempo "minutos+incremento" (por defecto "3+2"). Se
+elige en el menú (1+0, 2+1, 3+2, 5+3, 10+5, 15+10) y se recuerda; a mano se puede
+poner uno personalizado, por ejemplo "7+4" (1 a 180 minutos, 0 a 60 s).
 """
 import json
 import os
@@ -30,7 +33,7 @@ PLAYER_COLORS = ("white", "black", "random")
 DEFAULTS = {"stockfish_path": "", "analysis_depth": 3, "sound": True,
             "board_theme": "marron", "ai_engine": "cabrechess",
             "support_prompt_every": 5, "support_games": 0,
-            "player_color": "white"}
+            "player_color": "white", "time_control": "3+2"}
 
 
 def data_dir():
@@ -71,6 +74,11 @@ def load_settings(path=None):
         cfg["ai_engine"] = DEFAULTS["ai_engine"]
     if cfg["player_color"] not in PLAYER_COLORS:
         cfg["player_color"] = DEFAULTS["player_color"]
+    from .clock import parse_time_control
+    if parse_time_control(cfg["time_control"]) is None:
+        cfg["time_control"] = DEFAULTS["time_control"]
+    else:
+        cfg["time_control"] = cfg["time_control"].strip()
     for key in ("support_prompt_every", "support_games"):
         try:
             cfg[key] = max(0, int(cfg[key]))
