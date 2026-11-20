@@ -6,6 +6,13 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-20
+
+### Relojes y puzzles
+
+Relojes con incremento como en Lichess, un puzzle táctico por día y
+descargas nuevas para Linux y macOS.
+
 ### Builds para Linux y macOS (D4)
 - El workflow de release ahora arma, además del `.exe` y el `.zip` de Windows,
   un `.tar.gz` para Linux (`CabreChess-linux64.tar.gz`) y un `.dmg` con
@@ -393,7 +400,8 @@ Primera versión publicada.
   (regla FIDE 6.9).
 - Las partículas de jaque no aparecían si el rey estaba en a1.
 
-[Unreleased]: https://github.com/federicocabrera1978-svg/cabrechess/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/federicocabrera1978-svg/cabrechess/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/federicocabrera1978-svg/cabrechess/releases/tag/v1.5.0
 [1.4.0]: https://github.com/federicocabrera1978-svg/cabrechess/releases/tag/v1.4.0
 [1.3.0]: https://github.com/federicocabrera1978-svg/cabrechess/releases/tag/v1.3.0
 [1.2.0]: https://github.com/federicocabrera1978-svg/cabrechess/releases/tag/v1.2.0
