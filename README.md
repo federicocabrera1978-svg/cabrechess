@@ -35,7 +35,7 @@ Por Federico Cabrera.
 - **Elegís el color** contra la IA: blancas, negras o al azar (con negras el tablero se gira solo).
 - **2 jugadores** en la misma compu (PvP).
 - **Modo análisis** con barra y gráfico de evaluación.
-- **Reloj** de 1, 3, 5 o 10 minutos con +3 s de incremento. Si se te cae la bandera
+- **Reloj** con controles estilo Lichess (1+0, 2+1, 3+2, 5+3, 10+5 y 15+10) que se recuerdan. Si se te cae la bandera
   y al rival no le alcanza el material para ganar, son tablas (como en el reglamento).
 - **Abandonar y ofrecer tablas** (botones de la bandera y ½ del panel). Contra la IA, acepta
   tablas solo si va perdiendo o si la posición está pareja desde la jugada 30;
@@ -49,7 +49,7 @@ Por Federico Cabrera.
   desde el menú (botones *Cargar PGN* / *Cargar FEN*), para revisar en análisis.
 - **Puzzle del día**: una táctica diaria de la base pública de Lichess (CC0), con
   rating y temas, pista, solución, "Otro puzzle" y racha de días seguidos.
-- Piezas **cburnett** (las de Lichess) y ejecutable para Windows con checksum SHA-256.
+- Piezas **cburnett** (las de Lichess) y ejecutables para Windows, Linux y macOS con checksum SHA-256.
 
 ## Partidas guardadas y análisis
 
@@ -136,21 +136,21 @@ python -m pytest
 
 Cubren el reloj, deshacer, el logo, el motor (encuentra mates en 1 y nunca devuelve
 jugadas ilegales) y que el PGN exportado se pueda volver a leer con `chess.pgn`.
-CI los corre en Ubuntu y Windows en cada push y PR.
+CI los corre en Ubuntu, Windows y macOS en cada push y PR.
 
-## Descargar el ejecutable (Windows)
+## Descargar el ejecutable
 
-Los `.exe` se publican en [Releases](../../releases), junto con un archivo `.sha256`
+Los builds se publican en [Releases](../../releases), cada uno con un archivo `.sha256`
 para verificar que el archivo descargado es exactamente el que se generó a partir del
-código fuente publicado en este repositorio:
+código fuente publicado en este repositorio.
+
+**Windows**
 
 ```powershell
 Get-FileHash CabreChess.exe -Algorithm SHA256
 ```
 
-Compará el resultado con el contenido de `CabreChess.exe.sha256`.
-
-Hay dos formatos:
+Compará el resultado con el contenido de `CabreChess.exe.sha256`. Hay dos formatos:
 
 - **`CabreChess-win64.zip` (recomendado)**: descomprimilo y ejecutá
   `CabreChess\CabreChess.exe`. Arranca directo, sin extraerse a `%TEMP%`, y suele
@@ -158,6 +158,28 @@ Hay dos formatos:
 - **`CabreChess.exe`**: un solo archivo. Cada vez que arranca se autoextrae a una
   carpeta temporal, y algunos antivirus (Avast CyberCapture / Escudo de
   comportamiento) desconfían de eso.
+
+**Linux**
+
+Descargá `CabreChess-linux64.tar.gz`, descomprimilo (`tar -xzf CabreChess-linux64.tar.gz`)
+y ejecutá `./CabreChess/CabreChess`. Para verificar el checksum:
+
+```
+sha256sum -c CabreChess-linux64.tar.gz.sha256
+```
+
+**macOS (Apple Silicon)**
+
+Descargá `CabreChess-macos-arm64.dmg`, abrilo y arrastrá `CabreChess.app` a Aplicaciones.
+El build de CI es para Apple Silicon (M1 y posteriores). En un Mac Intel podés instalarlo
+con `pip install .`. Para verificar el checksum:
+
+```
+shasum -a 256 -c CabreChess-macos-arm64.dmg.sha256
+```
+
+macOS puede avisar que la app no está firmada (igual que SmartScreen en Windows).
+En ese caso: clic derecho → Abrir, o *Ajustes del Sistema → Privacidad y seguridad*.
 
 El juego no lanza procesos, no usa internet ni motores externos y no toca el
 registro: el análisis y la IA corren dentro del mismo proceso (hay un test que lo
@@ -182,11 +204,15 @@ Se solicitó firma de código gratuita para proyectos open source a
 
 ```
 pip install -r requirements-dev.txt
-pyinstaller CabreChess.spec
+python tools/package.py
 ```
 
-El spec arranca desde `packaging_entry.py`, empaqueta `cabrechess/assets/` (piezas y logo), usa `cabrechess/assets/logo/cabrechess.ico`
-como ícono del `.exe` y toma los metadatos de versión de `version_info.txt`.
+`tools/package.py` detecta el sistema y deja los archivos en `dist/`, con su `.sha256`.
+En Windows arma el `.zip` onedir y el `.exe` onefile; en Linux, el `.tar.gz`; en macOS,
+el `.dmg` con `CabreChess.app`. Los specs (`CabreChess-onedir.spec` y `CabreChess.spec`)
+arrancan desde `packaging_entry.py` y empaquetan `cabrechess/assets/` (piezas y logo).
+En Windows el ícono sale de `cabrechess.ico` y la versión de `version_info.txt`; en macOS
+se genera un `.icns` a partir del PNG del logo.
 El logo se regenera con `python tools/make_logo.py` (necesita Pillow).
 
 ## Estructura del código
@@ -229,10 +255,10 @@ inspired by Lichess.
 
 **Features:** play against a built-in AI (iterative-deepening alpha-beta with quiescence search and a per-move time limit, 3 levels, runs in a
 background thread) as white, black or random; local 2-player mode; analysis mode with
-evaluation bar and graph; 1/3/5/10-minute clocks with +3 s increment and proper
+evaluation bar and graph; Lichess-style time controls (1+0 to 15+10) and proper
 flag-vs-insufficient-material handling; full undo (clocks, captures, eval); premoves,
-drag and drop, promotion picker; PGN export; Lichess cburnett pieces; Windows `.exe`
-built reproducibly by GitHub Actions with a SHA-256 checksum.
+drag and drop, promotion picker; PGN export; Lichess cburnett pieces; Windows, Linux and macOS builds
+produced reproducibly by GitHub Actions with a SHA-256 checksum.
 
 **Saved games & analysis:** every finished game is stored automatically in a local SQLite database (`%APPDATA%\\CabreChess\\partidas.db` on Windows, `~/.cabrechess/` elsewhere); browse, open in analysis, export or delete them from *Partidas guardadas*. Analysis shows the best move (arrow + SAN) and evaluation using the built-in engine in-process; Stockfish can optionally be configured via `settings.json` (`stockfish_path`) or `CABRECHESS_STOCKFISH`; once configured it can also be picked as the opponent in the menu (*Rival IA*), with levels 1-6 mapped to its Skill Level.
 
@@ -247,7 +273,7 @@ cabrechess          # or, without installing: python -m cabrechess
 ```
 
 **Tests:** `pip install -r requirements-dev.txt && ruff check . && python -m pytest`
-(headless, SDL dummy driver). Windows builds are in [Releases](../../releases).
+(headless, SDL dummy driver). Windows, Linux and macOS builds are in [Releases](../../releases).
 
 License: GPL-3.0-or-later. Pieces: cburnett by Colin M.L. Burnett (GPLv2+).
 

@@ -6,6 +6,27 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Builds para Linux y macOS (D4)
+- El workflow de release ahora arma, además del `.exe` y el `.zip` de Windows,
+  un `.tar.gz` para Linux (`CabreChess-linux64.tar.gz`) y un `.dmg` con
+  `CabreChess.app` para macOS Apple Silicon (`CabreChess-macos-arm64.dmg`).
+  Cada archivo trae su checksum SHA-256.
+- El empaquetado queda en `tools/package.py`. El CI también lo corre en
+  Ubuntu, Windows y macOS, y los tests cubren las tres plataformas.
+
+### Controles de tiempo estilo Lichess (B10, parte 1)
+- La fila **Tiempo** del menú ahora ofrece los controles clásicos de Lichess
+  con su incremento: **1+0** y **2+1** (bala), **3+2** y **5+3** (blitz),
+  **10+5** y **15+10** (rápidas). Antes eran 1/3/5/10 minutos, siempre con +3 s.
+- Debajo de las opciones se ve la **categoría** (Bala, Blitz, Rápida o Clásica,
+  calculada como Lichess: base + 40 × incremento) y el incremento por jugada.
+- El control elegido **se recuerda** entre sesiones (`time_control` en
+  `settings.json`). A mano se puede poner uno **personalizado**, por ejemplo
+  `"7+4"` (1 a 180 minutos, 0 a 60 s), y aparece como opción extra en el menú.
+- Cambio: el control por defecto pasa a ser **3+2** (antes 3 min +3 s).
+- El encabezado PGN `TimeControl` y la IA usan el incremento real del control.
+- Tests nuevos en `tests/test_controles_tiempo.py`.
+
 ### Puzzle del día (B10, parte 2)
 - Nuevo botón **Puzzle del día** arriba a la derecha del menú: una táctica por
   día, siempre la misma para la misma fecha, con su **rating** y sus **temas**

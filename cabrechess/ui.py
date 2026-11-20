@@ -11,7 +11,10 @@ import pygame
 
 from ._version import __version__
 from .clipboard import copy_text
-from .clock import TIME_INCREMENT, TIME_OPTIONS, format_clock
+from .clock import (
+    DEFAULT_TIME_CONTROL, TIME_CONTROLS, format_clock, parse_time_control,
+    time_category, time_control_label,
+)
 from .constants import (
     ACCENT,
     ACCENT2,
@@ -196,9 +199,11 @@ class CabreChess(PuzzleScreenMixin):
         self.undo_stack = []
 
         # Tiempos
-        self.time_options = list(TIME_OPTIONS)    # 1/3/5/10 min en segundos
-        self.time_selected = 180                   # 3 min por defecto
-        self.time_increment = TIME_INCREMENT       # +3s por movimiento
+        # Control de tiempo (B10): base + incremento Fischer, estilo Lichess.
+        base, inc = (parse_time_control(_cfg.get("time_control", DEFAULT_TIME_CONTROL))
+                     or parse_time_control(DEFAULT_TIME_CONTROL))
+        self.time_selected = base                  # segundos por jugador
+        self.time_increment = inc                  # segundos por movimiento
         self.time_white = self.time_selected
         self.time_black = self.time_selected
         self.time_last = time.time()
@@ -597,7 +602,7 @@ class CabreChess(PuzzleScreenMixin):
             who = f"IA nivel {self.ai_level}: {level_name}"
         info_y = self.menu_option_rows()[-1][1] + 34
         inc_surf = self.font_tiny.render(
-            f"{who}  ·  +{self.time_increment}s por movimiento", True, TEXT_DIM)
+            f"{who}  ·  {self.time_control_text()}", True, TEXT_DIM)
         self.screen.blit(inc_surf, (WINDOW_W//2 - inc_surf.get_width()//2, info_y))
 
         # Ajustes (esquina inferior izquierda, simétrico a Ko-fi)
@@ -686,12 +691,12 @@ class CabreChess(PuzzleScreenMixin):
              row(MENU_ROW_Y[1], [("Blancas", "white"), ("Negras", "black"), ("Azar", "random")],
                  84, self.player_color_choice)),
             ("Tiempo:", MENU_ROW_Y[2], ACCENT2,
-             row(MENU_ROW_Y[2], [("1 min", 60), ("3 min", 180), ("5 min", 300), ("10 min", 600)],
-                 62, self.time_selected)),
+             row(MENU_ROW_Y[2], self.time_control_specs(), 54,
+                 (self.time_selected, self.time_increment))),
         ]
         setters = [lambda v: setattr(self, "ai_level", v),
                    self.set_player_color,
-                   lambda v: setattr(self, "time_selected", v)]
+                   self.set_time_control]
         if self.stockfish_path:
             rows.append(("Rival IA:", MENU_ROW_Y[3], ACCENT,
                          row(MENU_ROW_Y[3], [("CabreChess", "cabrechess"), ("Stockfish", "stockfish")],
@@ -1709,6 +1714,38 @@ class CabreChess(PuzzleScreenMixin):
                 self.toast(f"No se pudo abrir la base de partidas: {e}")
                 return None
         return self.db
+
+    def time_control_specs(self):
+        """Opciones de tiempo del menú: (etiqueta, (base, incremento)). Si en
+        settings.json hay uno personalizado, se agrega al final."""
+        specs = [(label, (base, inc)) for label, base, inc in TIME_CONTROLS]
+        current = (self.time_selected, self.time_increment)
+        if current not in [v for _l, v in specs]:
+            specs.append((time_control_label(*current), current))
+        return specs
+
+    def set_time_control(self, value, save=True):
+        """Elige el control de tiempo (base, incremento) y lo recuerda."""
+        try:
+            base, inc = int(value[0]), int(value[1])
+        except (TypeError, ValueError, IndexError):
+            return False
+        if base <= 0 or inc < 0:
+            return False
+        self.time_selected, self.time_increment = base, inc
+        if save:
+            save_setting("time_control", time_control_label(base, inc))
+        return True
+
+    def time_control_text(self):
+        """Texto del control elegido, ej. "Blitz 3+2 · +2 s por jugada"."""
+        base, inc = self.time_selected, self.time_increment
+        text = f"{time_category(base, inc)} {time_control_label(base, inc)}"
+        if inc:
+            text += f"  ·  +{inc} s por jugada"
+        else:
+            text += "  ·  sin incremento"
+        return text
 
     def time_control(self):
         if not self.use_timer:
