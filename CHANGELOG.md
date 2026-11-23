@@ -6,6 +6,23 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Estadísticas locales (B11, parte 1)
+- Nuevo botón **Estadísticas** arriba a la izquierda del menú. Muestra las
+  partidas jugadas contra la IA, victorias, empates, derrotas y puntaje, una
+  tabla **por nivel de IA** (1 a 6, con el Elo asignado a cada nivel), las
+  últimas 5 partidas y un **Elo estimado** local.
+- Cada partida terminada contra la IA se anota sola en `stats.json` (misma
+  carpeta que `settings.json`): resultado, nivel, color, motor (CabreChess o
+  Stockfish), control de tiempo, motivo y fecha. No cuentan las partidas de
+  2 jugadores, el modo análisis ni las partidas cargadas (PGN o base).
+- Elo estimado: fórmula Elo estándar con K = 32, empezando en 1200, partida por
+  partida contra el Elo de cada nivel (600 a 2000 el motor propio; las de
+  Stockfish usan su propia tabla y se muestran aparte). Con menos de 10
+  partidas se marca como provisional.
+- **Reiniciar estadísticas** pide confirmación. Si `stats.json` está roto, el
+  juego no falla: lo aparta como `stats.json.corrupto` y empieza de cero.
+- Tests nuevos en `tests/test_estadisticas.py`.
+
 ## [1.5.0] - 2026-11-20
 
 ### Relojes y puzzles
