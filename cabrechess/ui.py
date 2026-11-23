@@ -69,6 +69,7 @@ from .endings import (
 )
 from .engine import AI_LEVELS, DEFAULT_AI_LEVEL, SimpleEngine, ai_level, ai_time_budget
 from .puzzle_ui import PuzzleScreenMixin
+from .stats_ui import StatsScreenMixin
 from .pgn import (build_pgn, default_pgn_path, write_pgn,
                   parse_pgn, parse_fen, moves_from_game, read_pgn_file)
 from .settings import load_settings, save_setting
@@ -84,7 +85,7 @@ def menu_version_text():
     return f"v{__version__} — Motor: Minimax Alpha-Beta"
 
 
-class CabreChess(PuzzleScreenMixin):
+class CabreChess(PuzzleScreenMixin, StatsScreenMixin):
     def __init__(self):
         enable_windows_dpi_awareness()   # antes de crear la ventana
         pygame.init()
@@ -438,6 +439,8 @@ class CabreChess(PuzzleScreenMixin):
             self.draw_settings()
         elif self.mode == "puzzle":
             self.draw_puzzle()
+        elif self.mode == "stats":
+            self.draw_stats()
         else:
             self.draw_game()
 
@@ -448,7 +451,7 @@ class CabreChess(PuzzleScreenMixin):
     def screen_kind(self):
         """Pantalla actual a efectos de la transición (las partidas cuentan
         como una sola: cambiar de pvp a vsai no es cambiar de pantalla)."""
-        return self.mode if self.mode in ("menu", "saved", "settings", "puzzle") else "game"
+        return self.mode if self.mode in ("menu", "saved", "settings", "puzzle", "stats") else "game"
 
     def draw_transition(self, now=None):
         """Velo oscuro que se desvanece al cambiar de pantalla."""
@@ -616,6 +619,7 @@ class CabreChess(PuzzleScreenMixin):
         self.screen.blit(lbl, (rect.x + 36, rect.centery - lbl.get_height() // 2))
 
         self.draw_menu_puzzle_button()
+        self.draw_menu_stats_button()
 
         # Versión
         v = self.font_tiny.render(menu_version_text(), True, TEXT_DIM)
@@ -1703,6 +1707,7 @@ class CabreChess(PuzzleScreenMixin):
             self.dragging = False
             self.drag_piece = None
             self.autosave_game()
+            self.record_game_stats()
             self.count_finished_game()
 
     # ─── BASE DE DATOS DE PARTIDAS ──────────────────────────────────────────────
@@ -2851,6 +2856,12 @@ class CabreChess(PuzzleScreenMixin):
                 else:
                     self.handle_puzzle_key(event.key)
 
+            elif event.type == pygame.KEYDOWN and self.mode == "stats":
+                if event.key == pygame.K_F11:
+                    self.toggle_fullscreen()
+                else:
+                    self.handle_stats_key(event.key)
+
             elif event.type == pygame.KEYDOWN and self.mode == "settings":
                 if event.key == pygame.K_F11:
                     self.toggle_fullscreen()
@@ -2865,7 +2876,7 @@ class CabreChess(PuzzleScreenMixin):
                 self.saved_scroll = max(0, min(max(0, len(self.saved_games) - self.SAVED_ROWS),
                                                self.saved_scroll - event.y))
 
-            elif event.type == pygame.MOUSEWHEEL and self.mode not in ("menu", "settings"):
+            elif event.type == pygame.MOUSEWHEEL and self.mode not in ("menu", "settings", "stats"):
                 if self.mouse_over_history(self.mouse_pos()):
                     self.scroll_history(event.y)
 
@@ -2918,7 +2929,7 @@ class CabreChess(PuzzleScreenMixin):
                 if event.button == 1:
                     pos = self.to_logical(event.pos)
                     # Click izquierdo sobre el tablero borra flechas y círculos
-                    if self.mode not in ("menu", "settings") and self.pixel_to_sq(*pos) is not None:
+                    if self.mode not in ("menu", "settings", "stats") and self.pixel_to_sq(*pos) is not None:
                         self.clear_shapes()
                     self.handle_click(pos)
                 elif event.button == 3:   # click derecho cancela premove y dibuja
@@ -2956,6 +2967,9 @@ class CabreChess(PuzzleScreenMixin):
             return
         if self.mode == "puzzle":
             self.handle_puzzle_click(pos)
+            return
+        if self.mode == "stats":
+            self.handle_stats_click(pos)
             return
 
         # Promo
@@ -3180,6 +3194,9 @@ class CabreChess(PuzzleScreenMixin):
             return
         if self.menu_puzzle_button()[1].collidepoint(mx, my):
             self.open_puzzle(daily=True)
+            return
+        if self.menu_stats_button()[1].collidepoint(mx, my):
+            self.open_stats()
             return
 
         for _lbl, _y, _acc, options, setter in self.menu_option_rows_with_setters():
