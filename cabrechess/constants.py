@@ -49,7 +49,10 @@ PANEL_X         = BOARD_X + BOARD_SIZE + 16
 # Layout del menú principal (filas de opciones)
 MENU_OPT_X      = WINDOW_W // 2 - 200      # columna de etiquetas
 MENU_BTN_X      = WINDOW_W // 2 - 80       # primera columna de botones
-MENU_ROW_Y      = (590, 628, 666, 704)     # dificultad / color / tiempo / rival (si hay Stockfish)
+MENU_MAIN_Y     = 268                      # primer botón grande (Jugar contra IA)
+MENU_MAIN_STEP  = 56                       # separación entre botones grandes (alto 46)
+MENU_LOAD_Y     = 498                      # botones Cargar PGN / Cargar FEN
+MENU_ROW_Y      = (548, 584, 620, 656, 692)  # nivel / color / tiempo / variante / rival (si hay Stockfish)
 
 # Piezas Unicode
 PIECE_UNICODE = {

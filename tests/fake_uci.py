@@ -9,6 +9,7 @@ import sys
 import chess
 
 board = chess.Board()
+chess960 = False   # UCI_Chess960 (Chess960, B11 parte 2)
 log = os.environ.get("FAKE_UCI_LOG")
 
 
@@ -22,20 +23,24 @@ for raw in sys.stdin:
     if line == "uci":
         out("id name FakeFish")
         out("option name Skill Level type spin default 20 min 0 max 20")
+        out("option name UCI_Chess960 type check default false")
         out("uciok")
     elif line == "isready":
         out("readyok")
-    elif line.startswith("setoption") and log:
-        with open(log, "a", encoding="utf-8") as fh:
-            fh.write(line + "\n")
+    elif line.startswith("setoption"):
+        if "name UCI_Chess960 " in line:
+            chess960 = line.endswith("true")
+        if log:
+            with open(log, "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
     elif line.startswith("position"):
         parts = line.split()
         if parts[1] == "startpos":
-            board = chess.Board()
+            board = chess.Board(chess960=chess960)
             rest = parts[2:]
         else:
             idx = parts.index("moves") if "moves" in parts else len(parts)
-            board = chess.Board(" ".join(parts[2:idx]))
+            board = chess.Board(" ".join(parts[2:idx]), chess960=chess960)
             rest = parts[idx:]
         if rest and rest[0] == "moves":
             for uci in rest[1:]:

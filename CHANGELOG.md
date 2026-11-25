@@ -6,6 +6,39 @@ y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Chess960 / Fischer Random (B11, parte 2)
+- Nueva fila **Variante** en el menú: *Clásico* o *Chess960*. Vale para
+  *Jugar contra IA* y *2 Jugadores* y se recuerda (`variant` en
+  `settings.json`). El modo *Análisis* desde el menú sigue arrancando en la
+  posición clásica.
+- Cada partida nueva de Chess960 (también con el botón de nueva partida)
+  arranca en una de las **960 posiciones al azar**, generadas con
+  python-chess. El **número de posición** (0 a 959; la 518 es la clásica) se
+  ve arriba de la lista de jugadas, en lugar del nombre de la apertura.
+- **Enroque 960**: se lleva el rey **sobre su torre** (clic o arrastre), o a
+  su **casilla final** (g1/c1, g8/c8) cuando esa casilla no es además una
+  jugada normal del rey. Se marcan como destino la casilla final del rey y la
+  torre, y la animación sigue moviendo las dos piezas. Funciona con premoves y
+  deshacer.
+- **PGN**: las partidas 960 se exportan con `Variant "Chess960"`, `FEN` y
+  `SetUp "1"` (también la 518), sin `ECO`/`Opening`. *Cargar PGN* y las
+  *Partidas guardadas* las abren con las reglas 960, y *Cargar FEN* detecta un
+  FEN de Chess960 (enroque `KQkq` con torres fuera de lugar o tipo `HAha`).
+- **IA**: el motor propio juega 960 sin cambios (usa las jugadas legales de
+  python-chess). Con **Stockfish**, python-chess activa `UCI_Chess960` solo;
+  si el motor no lo soporta, juega el motor propio y se avisa.
+- **Estadísticas**: las partidas 960 contra la IA cuentan igual que las
+  clásicas en los totales, la tabla por nivel y el Elo estimado (el rival es
+  el mismo), y se guardan con `"variant": "chess960"` en `stats.json`. La
+  tabla suma una fila **Chess960 (incluidas)** con su detalle y las últimas
+  partidas marcan "960". Los `stats.json` anteriores siguen valiendo.
+- El menú se compactó un poco para que entre la fila nueva (y la de *Rival
+  IA* cuando hay Stockfish); captura nueva en `docs/screenshots/chess960.png`
+  y `menu.png` actualizada.
+- Tests nuevos en `tests/test_chess960.py` (las 960 posiciones, enroque 960 de
+  los dos lados, prioridad de la jugada normal, PGN ida y vuelta, FEN 960,
+  menú, IA propia, Stockfish con `UCI_Chess960`, estadísticas y dibujo).
+
 ### Estadísticas locales (B11, parte 1)
 - Nuevo botón **Estadísticas** arriba a la izquierda del menú. Muestra las
   partidas jugadas contra la IA, victorias, empates, derrotas y puntaje, una

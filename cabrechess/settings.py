@@ -22,6 +22,9 @@ contador que lleva el juego.
 "time_control": control de tiempo "minutos+incremento" (por defecto "3+2"). Se
 elige en el menú (1+0, 2+1, 3+2, 5+3, 10+5, 15+10) y se recuerda; a mano se puede
 poner uno personalizado, por ejemplo "7+4" (1 a 180 minutos, 0 a 60 s).
+"variant": standard / chess960 = variante de "Jugar contra IA" y "2 Jugadores"
+(fila "Variante" del menú; se recuerda). En Chess960 cada partida nueva arranca
+en una de las 960 posiciones al azar.
 """
 import json
 import os
@@ -30,10 +33,12 @@ from pathlib import Path
 
 AI_ENGINES = ("cabrechess", "stockfish")
 PLAYER_COLORS = ("white", "black", "random")
+VARIANTS = ("standard", "chess960")
 DEFAULTS = {"stockfish_path": "", "analysis_depth": 3, "sound": True,
             "board_theme": "marron", "ai_engine": "cabrechess",
             "support_prompt_every": 5, "support_games": 0,
-            "player_color": "white", "time_control": "3+2"}
+            "player_color": "white", "time_control": "3+2",
+            "variant": "standard"}
 
 
 def data_dir():
@@ -74,6 +79,8 @@ def load_settings(path=None):
         cfg["ai_engine"] = DEFAULTS["ai_engine"]
     if cfg["player_color"] not in PLAYER_COLORS:
         cfg["player_color"] = DEFAULTS["player_color"]
+    if cfg["variant"] not in VARIANTS:
+        cfg["variant"] = DEFAULTS["variant"]
     from .clock import parse_time_control
     if parse_time_control(cfg["time_control"]) is None:
         cfg["time_control"] = DEFAULTS["time_control"]

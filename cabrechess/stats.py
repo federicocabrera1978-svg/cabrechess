@@ -10,6 +10,11 @@ CABRECHESS_DATA_DIR). Formato::
                 "engine": "cabrechess", "color": "white", "time_control": "3+2",
                 "termination": "checkmate"}, ...]}
 
+Las partidas de Chess960 llevan además ``"variant": "chess960"`` (sin la clave
+= clásica, así los stats.json viejos siguen valiendo). Cuentan igual para los
+totales, la tabla por nivel y el Elo (el rival es el mismo nivel de IA), y
+``summarize`` las resume también aparte en ``"chess960"``.
+
 Se guarda solo la lista de partidas; los totales y el Elo se recalculan al
 leerla, así nunca quedan desincronizados. Si el archivo está roto se aparta
 como ``stats.json.corrupto`` (no se pierde) y se empieza de cero.
@@ -49,6 +54,7 @@ AI_LEVEL_ELO = {
 STOCKFISH_LEVEL_ELO = {1: 1300, 2: 1500, 3: 1700, 4: 2000, 5: 2300, 6: 2800}
 
 ENGINES = ("cabrechess", "stockfish")
+VARIANTS = ("standard", "chess960")
 RESULTS = ("win", "draw", "loss")
 COLORS = ("white", "black")
 SCORE = {"win": 1.0, "draw": 0.5, "loss": 0.0}
@@ -117,7 +123,7 @@ def _clean_game(g):
         return None
     engine = g.get("engine", "cabrechess")
     color = g.get("color", "white")
-    return {
+    clean = {
         "date": str(g.get("date", "")),
         "result": result,
         "level": level,
@@ -126,6 +132,13 @@ def _clean_game(g):
         "time_control": str(g.get("time_control", "") or ""),
         "termination": str(g.get("termination", "") or ""),
     }
+    if g.get("variant") == "chess960":
+        clean["variant"] = "chess960"
+    return clean
+
+
+def is_chess960(game):
+    return game.get("variant") == "chess960"
 
 
 def _read(path):
@@ -176,7 +189,8 @@ def _set_aside(path):
         pass
 
 
-def record_game(result, level, color, engine="cabrechess", time_control="", termination="", date=None, path=None):
+def record_game(result, level, color, engine="cabrechess", time_control="", termination="", date=None, path=None,
+                variant="standard"):
     """Agrega una partida terminada contra la IA. ``result`` es "win" / "draw"
     / "loss" desde el jugador. Devuelve las estadísticas actualizadas (o None
     si los datos no son válidos)."""
@@ -191,6 +205,7 @@ def record_game(result, level, color, engine="cabrechess", time_control="", term
             "color": color,
             "time_control": time_control,
             "termination": termination,
+            "variant": variant,
         }
     )
     if game is None:
@@ -234,6 +249,7 @@ def summarize(stats):
         "totals": _counts(games),
         "by_level": by_level,
         "stockfish": _counts(sf),
+        "chess960": _counts([g for g in games if is_chess960(g)]),
         "elo": round(hist[-1]) if hist else START_ELO,
         "elo_peak": round(max(hist)) if hist else START_ELO,
         "provisional": len(games) < PROVISIONAL_GAMES,
