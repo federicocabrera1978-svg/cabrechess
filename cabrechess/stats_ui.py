@@ -73,6 +73,7 @@ class StatsScreenMixin:
             engine="stockfish" if self.uses_stockfish() else "cabrechess",
             time_control=time_control_label(self.time_selected, self.time_increment) if self.use_timer else "",
             termination=self.termination,
+            variant="chess960" if self.board.chess960 else "standard",
         )
 
     # ── navegación ──
@@ -189,6 +190,9 @@ class StatsScreenMixin:
             rows.append((str(lvl), ai_level(lvl)["name"], str(r["elo"]), r))
         if s["stockfish"]["played"]:
             rows.append(("SF", "Stockfish (todos)", "—", s["stockfish"]))
+        if s.get("chess960", {}).get("played"):
+            # Ya están sumadas arriba (por nivel); esta fila es solo el detalle
+            rows.append(("960", "Chess960 (incluidas)", "—", s["chess960"]))
         return rows
 
     def _draw_stats_table(self, s):
@@ -247,6 +251,8 @@ class StatsScreenMixin:
             detail = f"{rival}  ·  con {COLOR_TEXT[g['color']]}"
             if g["time_control"]:
                 detail += f"  ·  {g['time_control']}"
+            if g.get("variant") == "chess960":
+                detail += "  ·  960"
             d = self.font_tiny.render(detail, True, TEXT_COLOR)
             self.screen.blit(d, (x + 26, gy + 26))
             date = g["date"][:16].replace("T", " ")

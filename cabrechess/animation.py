@@ -14,6 +14,8 @@ from typing import Optional
 
 import chess
 
+from .chess960 import castling_squares
+
 
 @dataclass(frozen=True)
 class Slide:
@@ -52,18 +54,11 @@ def plan_animation(board, move):
     if piece is None:
         return MoveAnimation(slides=())
     if board.is_castling(move):
-        rank = chess.square_rank(move.from_square)
-        kingside = board.is_kingside_castling(move)
-        # En python-chess el enroque estándar es e1g1; en Chess960 puede ser rey→torre.
-        if board.piece_at(move.to_square) == chess.Piece(chess.ROOK, piece.color):
-            rook_from = move.to_square
-        else:
-            rook_from = chess.square(7 if kingside else 0, rank)
-        king_to = chess.square(6 if kingside else 2, rank)
-        rook_to = chess.square(5 if kingside else 3, rank)
+        # Enroque estándar (e1g1) o Chess960 (rey→torre): mismas casillas finales.
+        king_from, king_to, rook_from, rook_to = castling_squares(board, move)
         rook = board.piece_at(rook_from) or chess.Piece(chess.ROOK, piece.color)
         return MoveAnimation(slides=(
-            Slide(piece, move.from_square, king_to),
+            Slide(piece, king_from, king_to),
             Slide(rook, rook_from, rook_to),
         ))
     sq = captured_square(board, move)

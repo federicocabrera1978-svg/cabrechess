@@ -153,7 +153,7 @@ def opening_for_board(board):
 
     Si el tablero no arrancó de la posición inicial, devuelve None.
     """
-    if board.root() != chess.Board():
+    if board.chess960 or board.root() != chess.Board():   # Chess960: sin nombres
         return None
     return opening_for_moves(board.move_stack)
 

@@ -30,6 +30,9 @@ from .constants import (
     DEFAULT_THEME,
     MENU_BTN_X,
     MENU_OPT_X,
+    MENU_LOAD_Y,
+    MENU_MAIN_STEP,
+    MENU_MAIN_Y,
     MENU_ROW_Y,
     MOVE_ACTIVE,
     MOVE_HOVER,
@@ -56,6 +59,8 @@ from .display import (
 )
 from .analysis import Analyzer
 from .animation import plan_animation
+from .chess960 import (VARIANT_LABELS, castling_move_to, castling_squares,
+                       new_board as new_chess960_board, variant_label)
 from .review import MARK_COLORS, GameReview
 from .database import GameDB
 from .endings import (
@@ -145,6 +150,8 @@ class CabreChess(PuzzleScreenMixin, StatsScreenMixin):
         self.sound = SoundManager(enabled=_cfg.get("sound", True))
         self.board_theme = _cfg.get("board_theme", DEFAULT_THEME)
         self.player_color_choice = _cfg.get("player_color", "white")
+        # Chess960 (B11, parte 2): variante de las partidas nuevas vs IA / PvP.
+        self.variant = _cfg.get("variant", "standard")
         # Apoyar en Ko-fi: aviso discreto tras una partida, cada N partidas.
         self.support_prompt_every = _cfg.get("support_prompt_every", 5)
         self.support_games = _cfg.get("support_games", 0)
@@ -634,12 +641,12 @@ class CabreChess(PuzzleScreenMixin, StatsScreenMixin):
             ("Partidas guardadas", "save",    "saved",    (200, 180, 80)),
         ]
         return [(label, icon, action, color,
-                 pygame.Rect(WINDOW_W//2 - 160, 290 + i*62, 320, 50))
+                 pygame.Rect(WINDOW_W//2 - 160, MENU_MAIN_Y + i*MENU_MAIN_STEP, 320, 46))
                 for i, (label, icon, action, color) in enumerate(items)]
 
     def menu_load_buttons(self):
         """Botones compactos para cargar PGN o FEN (entre acciones y opciones)."""
-        y, h, gap = 542, 36, 10
+        y, h, gap = MENU_LOAD_Y, 34, 10
         w = (320 - gap) // 2
         x0 = WINDOW_W // 2 - 160
         return [
@@ -698,15 +705,27 @@ class CabreChess(PuzzleScreenMixin, StatsScreenMixin):
              row(MENU_ROW_Y[2], self.time_control_specs(), 54,
                  (self.time_selected, self.time_increment))),
         ]
+        rows.append(("Variante:", MENU_ROW_Y[3], ACCENT2,
+                     row(MENU_ROW_Y[3], [(VARIANT_LABELS[v], v) for v in ("standard", "chess960")],
+                         100, self.variant)))
         setters = [lambda v: setattr(self, "ai_level", v),
                    self.set_player_color,
-                   self.set_time_control]
+                   self.set_time_control,
+                   self.set_variant]
         if self.stockfish_path:
-            rows.append(("Rival IA:", MENU_ROW_Y[3], ACCENT,
-                         row(MENU_ROW_Y[3], [("CabreChess", "cabrechess"), ("Stockfish", "stockfish")],
+            rows.append(("Rival IA:", MENU_ROW_Y[4], ACCENT,
+                         row(MENU_ROW_Y[4], [("CabreChess", "cabrechess"), ("Stockfish", "stockfish")],
                              100, self.ai_engine)))
             setters.append(self.set_ai_engine)
         return [(*r, setter) for r, setter in zip(rows, setters)]
+
+    def set_variant(self, value, save=True):
+        """Variante de las partidas nuevas: "standard" o "chess960"."""
+        if value not in VARIANT_LABELS:
+            return
+        self.variant = value
+        if save:
+            save_setting("variant", value)
 
     def draw_game(self):
         if self.review_index is None:
@@ -1056,8 +1075,17 @@ class CabreChess(PuzzleScreenMixin, StatsScreenMixin):
             self.screen.blit(sel_surf, (x, y))
 
         # Movimientos legales
+        targets = []
         for move in self.legal_moves_from:
-            sq = move.to_square
+            if self.board.chess960 and self.board.is_castling(move):
+                # Enroque 960: se marcan la casilla final del rey y la torre
+                _kf, king_to, rook_from, _rt = castling_squares(self.board, move)
+                targets += [king_to, rook_from]
+            else:
+                targets.append(move.to_square)
+        for sq in dict.fromkeys(targets):
+            if sq == self.selected_sq:
+                continue
             x, y = self.sq_to_pixel(sq)
             dot_surf = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
             if self.board.piece_at(sq):
@@ -1335,7 +1363,12 @@ class CabreChess(PuzzleScreenMixin, StatsScreenMixin):
         # la de la posición revisada), si no "Movimientos"
         mode_w = self.font_tiny.size(self.mode_label())[0]
         opening = self.opening_text(PANEL_W - 40 - mode_w)
-        if opening:
+        chess960_text = variant_label(self.board)
+        if chess960_text:
+            # Chess960: no hay aperturas con nombre; se muestra el número de posición
+            title = self.font_small.render(chess960_text, True, ACCENT2)
+            self.screen.blit(title, (PANEL_X + 10, BOARD_Y + 10))
+        elif opening:
             title = self.font_tiny.render(opening, True, TEXT_COLOR)
             self.screen.blit(title, (PANEL_X + 10, BOARD_Y + 12))
         else:
@@ -1915,7 +1948,9 @@ class CabreChess(PuzzleScreenMixin, StatsScreenMixin):
                     # Siempre promovemos a reina por defecto (o mostramos menú)
                     return move  # retornamos el primero (puede haber varios por promo)
                 return move
-        return None
+        # Enroque: rey sobre su torre (Chess960) o a su casilla final (g1/c1)
+        # cuando esa casilla no es una jugada normal del rey.
+        return castling_move_to(self.board, from_sq, to_sq)
 
     def attempt_move(self, move):
         # ¿Requiere promoción?
@@ -2161,8 +2196,15 @@ class CabreChess(PuzzleScreenMixin, StatsScreenMixin):
         if not self.game_over:
             self.try_execute_premove()
 
+    def new_game_board(self):
+        """Tablero de una partida nueva: en Chess960 (vs IA o 2 jugadores) una
+        de las 960 posiciones al azar; si no, la posición clásica."""
+        if self.variant == "chess960" and self.mode in ("vsai", "pvp"):
+            return new_chess960_board()
+        return chess.Board()
+
     def reset_game(self):
-        self.board = chess.Board()
+        self.board = self.new_game_board()
         self.selected_sq = None
         self.legal_moves_from = []
         self.last_move = None
@@ -2260,11 +2302,7 @@ class CabreChess(PuzzleScreenMixin, StatsScreenMixin):
         if self.premove_from is None or self.premove_to is None:
             return
         # Buscar el movimiento en los legales del nuevo estado
-        move = None
-        for m in self.board.legal_moves:
-            if m.from_square == self.premove_from and m.to_square == self.premove_to:
-                move = m
-                break
+        move = self.find_move(self.premove_from, self.premove_to)
         self.clear_premove()
         if move:
             self.attempt_move(move)
@@ -2799,7 +2837,7 @@ class CabreChess(PuzzleScreenMixin, StatsScreenMixin):
         self.game_over_panel = False
         self.review_index = 0 if self.board.move_stack else None
         self.loaded_names = (white, black)
-        self.toast("PGN cargado")
+        self.toast(f"PGN cargado ({variant_label(self.board)})" if self.board.chess960 else "PGN cargado")
         return True
 
     def load_fen_text(self, fen):
@@ -3024,6 +3062,13 @@ class CabreChess(PuzzleScreenMixin, StatsScreenMixin):
                     self.selected_sq = None
                     self.legal_moves_from = []
                     self.dragging = False
+                elif (piece and piece.color == self.board.turn and self.board.chess960
+                      and (castle := self.find_move(self.selected_sq, sq)) is not None):
+                    # Rey seleccionado + click en su torre: enroque (Chess960)
+                    self.dragging = False
+                    self.drag_piece = None
+                    self.drag_from = None
+                    self.attempt_move(castle)
                 elif piece and piece.color == self.board.turn:
                     # Click en otra pieza propia: cambiar selección
                     self.selected_sq = sq

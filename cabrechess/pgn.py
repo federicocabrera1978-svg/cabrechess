@@ -10,6 +10,7 @@ from pathlib import Path
 
 import chess
 
+from .chess960 import fen_is_chess960
 from .openings import opening_for_board
 
 MODE_TAGS = {"pvp": "PvP", "vsai": "vs IA", "analysis": "Análisis"}
@@ -51,7 +52,13 @@ def build_pgn(board, move_history_san, mode, white_name, black_name, now=None,
         game.headers["Termination"] = termination
 
     root = board.root()
-    if root.fen() != chess.STARTING_FEN:
+    if root.chess960:
+        # Chess960: Variant "Chess960" + FEN/SetUp siempre (también la 518, que
+        # es la posición clásica pero con reglas de enroque 960).
+        game.setup(root)
+        game.headers["FEN"] = root.fen()
+        game.headers["SetUp"] = "1"
+    elif root.fen() != chess.STARTING_FEN:
         game.setup(root)
 
     node = game
@@ -104,6 +111,10 @@ def parse_fen(fen):
         return None, "FEN vacío"
     try:
         board = chess.Board(fen)
+        # FEN de Chess960 (torres/rey fuera de lugar o enroque tipo "HAha"):
+        # se activan las reglas de enroque 960.
+        if fen_is_chess960(board):
+            board = chess.Board(fen, chess960=True)
     except ValueError as e:
         return None, f"FEN inválido: {e}"
     return board, None
