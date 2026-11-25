@@ -24,6 +24,10 @@ Por Federico Cabrera.
   <img src="docs/screenshots/vs_ia_negras.png" alt="Jugando con negras contra la IA" width="48%">
   <img src="docs/screenshots/tiempo_agotado.png" alt="Tiempo agotado: tablas por material insuficiente" width="48%">
 </p>
+<p align="center">
+  <img src="docs/screenshots/chess960.png" alt="Partida Chess960 (posición 237): el rey negro marca el enroque largo" width="48%">
+  <img src="docs/screenshots/estadisticas.png" alt="Estadísticas locales contra la IA" width="48%">
+</p>
 
 ## Funcionalidades
 
@@ -54,6 +58,15 @@ Por Federico Cabrera.
   **Elo estimado** (fórmula Elo estándar, K = 32, empezando en 1200). Se guardan
   solas en `stats.json`, en la misma carpeta que `settings.json`, y se pueden
   reiniciar (pide confirmación).
+- **Chess960 (Fischer Random)**: en la fila **Variante** del menú elegís *Clásico* o
+  *Chess960* para *Jugar contra IA* y *2 Jugadores*. Cada partida nueva arranca en una
+  de las 960 posiciones al azar y el número de posición (0 a 959; la 518 es la clásica)
+  se ve arriba de la lista de jugadas. Para **enrocar** llevá el rey sobre su torre
+  (clic o arrastre) o a su casilla final (g1/c1) si esa casilla no es una jugada normal
+  del rey; se animan las dos piezas. El PGN sale con `Variant "Chess960"`, `FEN` y
+  `SetUp`, y se vuelve a cargar con *Cargar PGN* (también un FEN 960 con *Cargar FEN*).
+  La IA propia y Stockfish (con `UCI_Chess960`) juegan 960; las partidas cuentan en las
+  estadísticas como las demás y se ven aparte en la fila "Chess960".
 - Piezas **cburnett** (las de Lichess) y ejecutables para Windows, Linux y macOS con checksum SHA-256.
 
 ## Partidas guardadas y análisis
@@ -106,6 +119,7 @@ Por Federico Cabrera.
 | Recorrer la lista de jugadas | Rueda del mouse sobre la lista |
 | Puzzle del día | Botón arriba a la derecha del menú. `H` pista, `S` ver solución, `N` otro puzzle, `Esc` volver |
 | Estadísticas | Botón arriba a la izquierda del menú. "Reiniciar estadísticas" pide confirmación; `Esc` vuelve |
+| Chess960 | Fila *Variante* del menú. Enroque: rey sobre su torre, o a g1/c1 (g8/c8) si no es una jugada normal del rey. "Nueva partida" sortea otra posición |
 | Copiar FEN / PGN al portapapeles | `C` copia el FEN de la posición que se ve; `Shift+C` copia el PGN de la partida |
 
 ## Requisitos y cómo ejecutarlo
@@ -230,6 +244,7 @@ cabrechess/
 ├── constants.py   # tamaños de ventana, colores, glifos
 ├── engine.py      # motor propio (alfa-beta iterativo + quietud + MVV-LVA)
 ├── clock.py       # formato del reloj y resultado por bandera
+├── chess960.py    # Chess960: posición al azar (0-959), enroque 960
 ├── pgn.py         # exportación e importación PGN/FEN
 ├── openings.py    # nombres de aperturas (ECO), búsqueda por posición
 ├── puzzles.py     # puzzle del día: carga, validación de jugadas y racha
@@ -265,7 +280,7 @@ inspired by Lichess.
 background thread) as white, black or random; local 2-player mode; analysis mode with
 evaluation bar and graph; Lichess-style time controls (1+0 to 15+10) and proper
 flag-vs-insufficient-material handling; full undo (clocks, captures, eval); premoves,
-drag and drop, promotion picker; PGN export; local stats vs the AI (wins/draws/losses per level and an estimated Elo, *Estadísticas* in the menu); Lichess cburnett pieces; Windows, Linux and macOS builds
+drag and drop, promotion picker; PGN export; Chess960 / Fischer Random (random start position 0-959 shown in the move list, 960 castling by moving the king onto its rook, PGN with `Variant "Chess960"` + `FEN`, works vs the AI, Stockfish and 2 players); local stats vs the AI (wins/draws/losses per level and an estimated Elo, *Estadísticas* in the menu); Lichess cburnett pieces; Windows, Linux and macOS builds
 produced reproducibly by GitHub Actions with a SHA-256 checksum.
 
 **Saved games & analysis:** every finished game is stored automatically in a local SQLite database (`%APPDATA%\\CabreChess\\partidas.db` on Windows, `~/.cabrechess/` elsewhere); browse, open in analysis, export or delete them from *Partidas guardadas*. Analysis shows the best move (arrow + SAN) and evaluation using the built-in engine in-process; Stockfish can optionally be configured via `settings.json` (`stockfish_path`) or `CABRECHESS_STOCKFISH`; once configured it can also be picked as the opponent in the menu (*Rival IA*), with levels 1-6 mapped to its Skill Level.
